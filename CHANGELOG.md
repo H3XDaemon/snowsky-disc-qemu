@@ -62,6 +62,13 @@ Active firmware: **V2.57**. Local protocol research is finalized in
 - Sanitized physical-app fixtures, focused integration scenarios and optional
   local failure logs, including captured genre browsing/album selection.
   Long power tests run only when relevant. [Testing](docs/development/ci.md).
+- Opt-in boot through the stock init scripts (`rcS`, `fiio_init.sh` and its watch
+  loop, image hooks), with reboot, power-off and power-loss commands that keep
+  `/usr/data` and the card. `/usr/data` can be a size-limited image, and a guest can
+  be prepared from a rootfs image built on the stock firmware.
+  [Stock init and power events](emulator/docs/stock-init.md).
+- Keys held at power-on: static guest programs read the Volume and Play pin levels
+  from `/dev/mem`, in step with the viewer's buttons. [Keys](emulator/docs/keys.md#keys-held-at-power-on).
 - Daily OTA catalog monitoring with tracking issues; no automatic firmware
   download or promotion. Optional viewer Power-on script for custom startup.
 
@@ -107,6 +114,8 @@ Active firmware: **V2.57**. Local protocol research is finalized in
 
 ### Fixed
 
+- Setup and cleanup of a fresh work volume no longer detach the card image of
+  another running emulator container (loop devices are shared by the Docker VM).
 - WebSocket bridge releases its connection slot even when an invalid peer disconnects
   during cleanup, allowing the next client to connect. [Details](controller/docs/websocket.md).
 

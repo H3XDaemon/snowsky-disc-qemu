@@ -7,6 +7,7 @@ import subprocess
 import threading
 import time
 
+from emulator.runtime import gpio
 from emulator.runtime.keys import BRIGHTNESS
 from firmware.profile import identify_player
 
@@ -53,7 +54,8 @@ class Peripherals:
         saved = self.root / 'emu/sd-mmcblk0p1'
         return dict(brightness=brightness, sd_available=active.is_block_device() or saved.is_block_device(),
                     sd_inserted=active.is_block_device(),
-                    usb_connected=self._usb_connected(), peripheral_transition=self.operation,
+                    usb_connected=self._usb_connected(), boot_keys=sorted(gpio.armed(self.root)),
+                    peripheral_transition=self.operation,
                     peripheral_error=self.error)
 
     def _usb_connected(self):
@@ -80,6 +82,12 @@ class Peripherals:
             if battery.is_file():
                 battery.write_text('Charging\n' if connected else 'Discharging\n')
             self.error = None
+
+    def set_boot_keys(self, keys):
+        """Keys held from the next power-on until that boot ends (one boot only)."""
+        if not isinstance(keys, list) or any(type(key) is not str for key in keys):
+            raise ValueError('Expected a list of key names')
+        gpio.arm(self.root, keys)
 
     def _listener(self):
         pid = self._pid()

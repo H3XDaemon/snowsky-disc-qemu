@@ -14,6 +14,7 @@ the real stock UI from a browser on the host, no hardware.
   GET /move?x&y    move (during a drag; only between down and up)
   GET /up          release
   POST /button    physical button {name, gesture}; GET /device.json = power/screen state
+  POST /peripheral {name: sd|usb|boot_keys, ...}; boot_keys {keys: [...]} are held at the next power-on
   GET /events     SSE device snapshots on connect/change, with idle heartbeats
   GET /key?k=…    single press (volume_up|volume_down|play_pause|power), or safe ?code=<int>
 
@@ -132,6 +133,8 @@ class Handler(BaseHTTPRequestHandler):
                     viewer_controls.set_sd(data['inserted'])
                 elif data['name'] == 'usb':
                     viewer_controls.set_usb(data['connected'])
+                elif data['name'] == 'boot_keys':
+                    viewer_controls.set_boot_keys(data['keys'])
                 else:
                     raise ValueError('Unknown peripheral')
             else:

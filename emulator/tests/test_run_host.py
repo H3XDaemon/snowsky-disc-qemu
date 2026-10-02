@@ -135,6 +135,36 @@ if args == ['config', '--environment']:
                       [c[7:] for c in self.calls()])
         self.assertFalse((self.caller / 'UNEXPECTED').exists())
 
+    def test_boot_options_reach_the_guest_scripts_as_environment(self):
+        self.run_launcher('boot', '--init', '--hold', 'volume_up,play', '5')
+        boot = [c[7:] for c in self.calls() if c[7] == 'exec'][0]
+        self.assertEqual(boot[:7], ['exec', '-T', '-e', 'BOOT_MODE=init', '-e', 'BOOT_KEYS=volume_up,play', 'emulator'])
+        self.assertEqual(boot[-2:], ['--', '5'])
+        self.log.unlink()
+        self.run_launcher('boot')
+        self.assertEqual([c[7:] for c in self.calls() if c[7] == 'exec'][0][:3], ['exec', '-T', 'emulator'])
+        result = self.run_launcher('boot', '--fast', check=False)
+        self.assertEqual(result.returncode, 2)
+
+    def test_power_and_keys_pass_arguments_to_the_container(self):
+        self.run_launcher('power', 'cut', '--unsynced')
+        self.assertEqual(self.calls()[-1][7:], ['exec', '-T', 'emulator', 'bash',
+                                               '/repo/emulator/scripts/25_power.sh', 'cut', '--unsynced'])
+        self.run_launcher('keys', 'arm', 'play')
+        self.assertEqual(self.calls()[-1][7:], ['exec', '-T', 'emulator', 'python3', '-B', '-m',
+                                               'emulator.runtime.gpio', 'arm', 'play'])
+
+    def test_up_image_mounts_the_image_folder_and_never_edits_env(self):
+        image = self.caller / 'candidate image.bin'
+        image.write_bytes(b'hsqs')
+        self.run_launcher('up-image', image.name)
+        calls = [c[7:] for c in self.calls()]
+        self.assertEqual(calls[0], ['up', '-d', '--build'])
+        self.assertEqual(calls[1][-2:], ['--', 'candidate image.bin'])
+        self.assertIn('01_image_rootfs.sh', calls[1][-3])
+        self.assertFalse((self.component / '.env').exists())
+        self.assertNotEqual(self.run_launcher('up-image', 'missing.bin', check=False).returncode, 0)
+
     def test_capture_copy_failure_is_not_reported_as_success(self):
         result = self.run_launcher('capture', check=False, FAKE_FAIL='cp')
         self.assertNotEqual(result.returncode, 0)

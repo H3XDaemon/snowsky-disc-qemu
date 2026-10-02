@@ -9,7 +9,7 @@ export FW_VERSION="${FW_VERSION:-$(cat firmware/active-version)}"
 CI_SCENARIO="${CI_SCENARIO:-full}"
 CI_IDLE_PHASE="${CI_IDLE_PHASE:-all}"
 case "$CI_IDLE_PHASE" in all|quiet|power|usb) ;; *) echo 'Unknown CI_IDLE_PHASE' >&2; exit 2;; esac
-case "$CI_SCENARIO" in full|queue|queue-reads|settings|peq|sacd|themes|preferences|playlists|library|library-delete|scan-cancel|library-reset|track-end|formats|discovery|idle|idle-usb) ;; *) echo 'Unknown CI_SCENARIO' >&2; exit 2;; esac
+case "$CI_SCENARIO" in full|queue|queue-reads|settings|peq|sacd|themes|preferences|playlists|library|library-delete|scan-cancel|library-reset|track-end|formats|discovery|idle|idle-usb|stock-init) ;; *) echo 'Unknown CI_SCENARIO' >&2; exit 2;; esac
 if [ "$CI_SCENARIO" = sacd ]; then
   test -f "${CI_SACD_ISO:?sacd requires an explicitly approved local ISO file}"
 fi
@@ -37,6 +37,7 @@ cleanup() {
     mkdir -p "$CI_LOGS"
     compose cp emulator:/work/mq_player.log "$CI_LOGS/mq_player.log" || true
     compose cp emulator:/work/mq_ui.log "$CI_LOGS/mq_ui.log" || true
+    compose cp emulator:/work/console.log "$CI_LOGS/console.log" || true
     if [[ "$CI_SCENARIO" = idle || "$CI_SCENARIO" = idle-usb ]]; then
       compose cp emulator:/work/idle-evidence "$CI_LOGS/idle-evidence" || true
     fi
@@ -70,6 +71,12 @@ if [ "$CI_SCENARIO" = sacd ]; then
 fi
 compose up -d --no-build --wait --wait-timeout 60
 compose exec -T emulator bash /repo/emulator/scripts/00_extract_rootfs.sh /ota
+if [ "$CI_SCENARIO" = stock-init ]; then
+  # Boot through stock rcS/fiio_init.sh with /usr/data as an 83 MiB image; power events and keys.
+  compose exec -T -e USERDATA_MB=83 emulator bash /repo/emulator/scripts/10_setup_env.sh
+  compose exec -T emulator python3 -B -m tests.integration.stock_init_check
+  exit 0
+fi
 compose exec -T emulator bash /repo/emulator/scripts/10_setup_env.sh
 if [ "$CI_SCENARIO" = idle ]; then
   compose exec -T emulator python3 -B -m tests.integration.idle_check --phase "$CI_IDLE_PHASE"

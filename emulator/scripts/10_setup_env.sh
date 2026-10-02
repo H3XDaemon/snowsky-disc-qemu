@@ -54,6 +54,22 @@ mkdir -p "$ROOTFS/proc" "$ROOTFS/dev/mqueue"
 mountpoint -q "$ROOTFS/proc"       || mount -t proc   proc "$ROOTFS/proc"       2>/dev/null || true
 mountpoint -q "$ROOTFS/dev/mqueue" || mount -t mqueue none "$ROOTFS/dev/mqueue" 2>/dev/null || true
 
+# 3b) Optional: /usr/data as its own size-limited filesystem, like the player's userdata
+#     partition (83 MiB of NAND under UBIFS). USERDATA_MB creates the image once; from then
+#     on the image is /usr/data for both boot modes. See emulator/docs/stock-init.md.
+if [ -n "${USERDATA_MB:-}" ] && [ ! -f "$USERDATA_IMG" ]; then
+  [[ "$USERDATA_MB" =~ ^[0-9]+$ ]] && [ "$USERDATA_MB" -ge 8 ] || { err "USERDATA_MB must be a size in MiB (>= 8)"; exit 1; }
+  log "/usr/data: new ${USERDATA_MB} MiB ext4 image $USERDATA_IMG"
+  truncate -s "${USERDATA_MB}M" "$USERDATA_IMG.new"
+  mkfs.ext4 -q -F -m 0 -L userdata "$USERDATA_IMG.new"
+  mv "$USERDATA_IMG.new" "$USERDATA_IMG"
+  userdata_attach
+  userdata_mount
+  rmdir "$ROOTFS/usr/data/lost+found"   # the player's partition starts empty
+fi
+userdata_attach
+userdata_mount
+
 # 4) /dev stubs. fb0 is a plain file (qemu mmaps it fine). event0/event1 are plain
 #    files we append input_event structs to; their driver "name" is read from sysfs.
 log "/dev stubs: fb0, input/event0 (x2000_key), input/event1 (cst816t)"
@@ -91,14 +107,19 @@ IMG="$WORK/sdcard.img"
 # Setup creates a new card; discard handles saved by viewer ejection.
 rm -f "$ROOTFS/emu/sd-mmcblk0" "$ROOTFS/emu/sd-mmcblk0p1"
 for m in "$ROOTFS/tmp/sdcard" /tmp/sdcard; do mountpoint -q "$m" && umount -l "$m" 2>/dev/null || true; done
-for l in $(losetup -j "$IMG" 2>/dev/null | cut -d: -f1); do losetup -d "$l" 2>/dev/null || true; done
+for l in $(image_loops "$IMG"); do losetup -d "$l" 2>/dev/null || true; done
 SD_CONTENT=""
-if [ -d /sdcard ]; then
+# SDCARD_KEEP=1 keeps an existing card image (what the guest wrote to it) instead of
+# rebuilding it from /sdcard; the first setup still builds it.
+SD_KEEP=""
+if [ "${SDCARD_KEEP:-0}" = 1 ] && [ -f "$IMG" ]; then SD_KEEP=1; SD_CONTENT=kept; fi
+if [ -z "$SD_KEEP" ] && [ -d /sdcard ]; then
   # An empty card is valid. grep exits 1 when only the tracked placeholders exist,
   # which used to abort setup under errexit/pipefail before /usr/data was seeded.
   SD_CONTENT="$(find /sdcard -mindepth 1 -maxdepth 1 ! -name README.md ! -name .gitkeep -print -quit)"
 fi
 if [ -n "$SD_CONTENT" ]; then
+  if [ -z "$SD_KEEP" ]; then
   SZ=$(( $(du -sm /sdcard 2>/dev/null | cut -f1) + 32 ))
   rm -f "$IMG"; truncate -s "${SZ}M" "$IMG"
   mkfs.vfat -n SNOWSKY "$IMG" >/dev/null 2>&1
@@ -108,6 +129,7 @@ if [ -n "$SD_CONTENT" ]; then
   cp -r /sdcard/. "$T"/ 2>/dev/null || true
   rm -f "$T/README.md" "$T/.gitkeep" 2>/dev/null || true
   sync; umount "$T"; rmdir "$T"
+  fi
   LOOP="$(losetup -f --show "$IMG")"
   # Expose as REAL device nodes (not symlinks): a symlink -> /dev/loop0 can't be resolved from
   # inside the guest's chroot (it has no /dev/loop0), so the guest's own `mount /dev/mmcblk0p1`
@@ -117,6 +139,7 @@ if [ -n "$SD_CONTENT" ]; then
   mknod "$ROOTFS/dev/mmcblk0"   b 7 "$MIN" 2>/dev/null || ln -sf "$LOOP" "$ROOTFS/dev/mmcblk0"
   mknod "$ROOTFS/dev/mmcblk0p1" b 7 "$MIN" 2>/dev/null || ln -sf "$LOOP" "$ROOTFS/dev/mmcblk0p1"
   sd_mount   # mount /dev/mmcblk0p1 -o iocharset=utf8 at rootfs + container /tmp/sdcard (lib.sh)
+  [ -z "$SD_KEEP" ] || log "SD: kept the existing card image (SDCARD_KEEP=1)"
   log "SD: FAT from ./emulator/sdcard on $LOOP (mknod b 7 $MIN) as /dev/mmcblk0p1, mounted at /tmp/sdcard"
 else
   rm -f "$ROOTFS/dev/mmcblk0" "$ROOTFS/dev/mmcblk0p1"    # no card

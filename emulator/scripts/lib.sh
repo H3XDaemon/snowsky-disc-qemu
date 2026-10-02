@@ -35,10 +35,78 @@ kill_guest(){ ROOTFS="$ROOTFS" python3 -m emulator.runtime.keys stop; }
 # qemu-user shares the Docker VM kernel. Firmware children must not reconfigure
 # interfaces, set wall/RTC clocks, reboot the VM, or load modules. Keep SYS_ADMIN
 # for the existing guest SD mount workflow; this is not a complete sandbox.
+# TTL 0 means no limit (coreutils timeout). A guest booted through stock init
+# (BOOT_MODE=init) lives in its own PID/IPC/UTS namespaces: commands join them, so
+# guest pgrep/killall, /proc and message queues agree with the running programs.
 guest_run(){
-  local ttl="$1"; shift
-  timeout "$ttl" setpriv --bounding-set=-net_admin,-sys_time,-sys_boot,-sys_module,-sys_rawio \
-    --no-new-privs chroot "$ROOTFS" "$@"
+  local ttl="$1" init; shift
+  local confined=(timeout "$ttl" setpriv
+    --bounding-set=-net_admin,-sys_time,-sys_boot,-sys_module,-sys_rawio
+    --no-new-privs chroot "$ROOTFS" "$@")
+  if init="$(guest_init_pid)"; then
+    nsenter --target "$init" --pid --ipc --uts -- "${confined[@]}"
+  else
+    "${confined[@]}"
+  fi
+}
+
+# PID (as this container sees it) of a live stock-init guest's PID 1, else failure.
+guest_init_pid(){
+  local pid
+  [ -r "$ROOTFS/emu/init.pid" ] && read -r pid < "$ROOTFS/emu/init.pid" || return 1
+  [[ "$pid" =~ ^[0-9]+$ ]] && grep -qa 'emulator.runtime.guest_init' "/proc/$pid/cmdline" 2>/dev/null || return 1
+  printf '%s' "$pid"
+}
+
+# What a power-on finds: blank framebuffer, no queued input, reset control markers.
+board_reset(){
+  bash "$REPO/emulator/scripts/15_controls.sh"
+  rm -f "$ROOTFS/dev/mqueue/"* 2>/dev/null || true
+  head -c $((SCR_W*SCR_VY*4)) /dev/zero > "$ROOTFS/dev/fb0"
+  : > "$ROOTFS/dev/input/event1"; : > "$ROOTFS/dev/input/event0"
+}
+
+# After a stock-init session the rootfs still carries that guest's dead /proc and
+# RAM filesystems; the direct boot expects the container's own proc and mqueue.
+guest_view_direct(){
+  [ -e "$ROOTFS/emu/machine.json" ] || [ -e "$ROOTFS/emu/init.pid" ] || return 0
+  ROOTFS="$ROOTFS" python3 -B -c 'import os; from emulator.runtime import machine
+machine.restore_view(os.environ["ROOTFS"]); (machine.Path(os.environ["ROOTFS"]) / machine.STATE).unlink(missing_ok=True)'
+}
+
+# Loop devices of THIS container's image file. Loop devices are shared by every
+# container of the Docker VM, and `losetup -j` falls back to comparing the path
+# text when the file does not exist: on a fresh volume that names other
+# containers' /work/*.img loops. Never ask about a file that is not there.
+image_loops(){
+  [ -f "$1" ] || return 0
+  losetup -j "$1" 2>/dev/null | cut -d: -f1
+}
+
+# --- /usr/data as its own filesystem -------------------------------------------
+# With USERDATA_MB, 10_setup_env.sh creates $WORK/userdata.img (ext4, the size of
+# the player's userdata partition). Once the image exists it IS /usr/data: a loop
+# device behind the guest node /dev/ubi1_0, mounted inside the chroot.
+USERDATA_IMG="$WORK/userdata.img"
+userdata_attach(){
+  [ -f "$USERDATA_IMG" ] || return 0
+  local loop
+  loop="$(image_loops "$USERDATA_IMG" | head -n1)"
+  [ -n "$loop" ] || loop="$(losetup -f --show "$USERDATA_IMG")"
+  if [ "$(stat -c '%t:%T' "$ROOTFS/dev/ubi1_0" 2>/dev/null)" != "$(stat -c '%t:%T' "$loop")" ]; then
+    rm -f "$ROOTFS/dev/ubi1_0"
+    mknod "$ROOTFS/dev/ubi1_0" b 7 "${loop##*loop}"
+  fi
+}
+userdata_detach(){
+  local loop
+  if mountpoint -q "$ROOTFS/usr/data"; then umount "$ROOTFS/usr/data"; fi
+  for loop in $(image_loops "$USERDATA_IMG"); do losetup -d "$loop"; done
+  rm -f "$ROOTFS/dev/ubi1_0"
+}
+userdata_mount(){
+  [ -b "$ROOTFS/dev/ubi1_0" ] || return 0
+  mountpoint -q "$ROOTFS/usr/data" || guest_run 20 /bin/mount -t ext4 /dev/ubi1_0 /usr/data
 }
 
 # --- SD card -----------------------------------------------------------------

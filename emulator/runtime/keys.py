@@ -7,6 +7,8 @@ import subprocess
 import threading
 import time
 
+from emulator.runtime import gpio, machine
+
 BRIGHTNESS = 'sys/bus/platform/drivers/pwm-backlight/backlight/backlight/backlight/brightness'
 CODES = {
     'volume_up': {'single': 0xfb, 'double': 0x10a, 'hold': 0x107},
@@ -86,7 +88,8 @@ class Device:
         with self.lock:
             path = self.root / 'emu/power-request'
             try:
-                if self.transition or path.read_bytes()[:1] != b'1':
+                # A stock-init guest's own PID 1 serves the request (guest_init.py).
+                if self.transition or machine.active(self.root) or path.read_bytes()[:1] != b'1':
                     return
                 with path.open('r+b') as marker:
                     marker.write(b'0')
@@ -104,10 +107,11 @@ class Device:
                 with log.open('ab') as output:
                     subprocess.run(['bash', str(self.boot_script)], check=True,
                                    stdout=output, stderr=subprocess.STDOUT,
-                                   env={**os.environ, 'ROOTFS': str(self.root)}, timeout=90)
+                                   env={**os.environ, 'ROOTFS': str(self.root)}, timeout=180)
                 if not self.running():
                     raise RuntimeError('Guest did not start; inspect power-boot.log')
             else:
+                machine.cut(self.root)  # stock-init guest: power loss, then its mounts; else no-op
                 # Recheck chroot membership immediately before every signal (PID reuse).
                 for sig in (signal.SIGTERM, signal.SIGKILL):
                     for pid in self.processes():
@@ -142,12 +146,9 @@ class Buttons:
             self._levels()
 
     def _levels(self):
-        levels = bytes(48 if name in self.holds else 49
-                       for name in ('volume_up', 'volume_down'))
-        path = self.root / 'emu/volume-buttons'
-        # Fixed-width overwrite: no empty-file interval while the guest reads GPIOs.
-        with path.open('r+b') as f:
-            f.write(levels)
+        # Fixed-width overwrites: no empty-file interval while the guest reads GPIOs.
+        # Power-on holds stay low underneath the viewer's own pointer holds.
+        gpio.apply(self.root, self.holds)
 
     def _event(self, code, value):
         with (self.root / 'dev/input/event0').open('ab') as f:

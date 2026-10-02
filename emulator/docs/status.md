@@ -12,6 +12,7 @@ See the [support policy](../../firmware/docs/porting.md#support-policy--one-acti
 | Storage and indexing | FAT SD browsing, manual indexing and V2.57 insertion-triggered scans, including Cyrillic changes. | [Media library](media-library.md) |
 | Audio | Stock decoding to PCM capture, source-sample comparisons, WAV export and browser playback. | [Audio](audio.md) |
 | Viewer and controls | Live screen/audio, CSS device, assigned volume gestures, play/pause, sleep/wake, guest-only off/on and SD hotplug. | [Viewer](../../viewer/docs/usage.md), [keys](keys.md) |
+| Stock init and power events | Opt-in boot through stock `rcS`/`fiio_init.sh` with its watch loop and image hooks; reboot, power-off and power loss; `/usr/data` as a size-limited image; keys held at power-on. | [Stock init](stock-init.md), [keys](keys.md#keys-held-at-power-on) |
 | USB power and idle | Stock V2.57 sink/ADC detection, independent display timeout, idle shutdown and explicit local Power/reconnect recovery. | [Power](idle-power.md) |
 | Device protocol | Stock TCP/HTTP operations with an optional native WS bridge; explicit per-operation evidence and limits. | [Capabilities](../../docs/protocol/disc-capabilities.md), [Controller](../../controller/docs/README.md) |
 

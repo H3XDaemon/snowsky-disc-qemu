@@ -215,7 +215,8 @@
     "idle",
     "idle-usb",
     "storage",
-    "awake"
+    "awake",
+    "stock-init"
   ],
   "full_scenarios": [
     "library",

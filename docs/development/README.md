@@ -5,6 +5,7 @@ Repository-wide CI, quality checks, release preparation and dated reviews.
 - [Branches, CI and firmware inputs](ci.md)
 - [Public release preparation](public-release.md)
 - [DISC platform: standalone project initialization brief](disc-platform-handoff.md)
+- [Handoff: stock-init guest, power events and power-on keys](emulator-depth-handoff.md)
 
 ## Reports
 
