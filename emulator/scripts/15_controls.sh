@@ -27,8 +27,15 @@ if firmware_supports usb_power; then
   printf '1' > "$ROOTFS/emu/usb-power-supported"
 fi
 # Keep cable state across guest restarts; no USB gadget/role-switch events.
+# USB_POWER=1|0 sets the cable for this and later boots; empty keeps the stored state.
+case "${USB_POWER:-}" in
+  1|0) printf '%s' "$USB_POWER" > "$ROOTFS/emu/usb-connected" ;;
+  '') ;;
+  *) err "USB_POWER must be 1, 0 or empty"; exit 1 ;;
+esac
 B="$ROOTFS/sys/class/power_supply/cw221X-bat"
-if [ -d "$B" ]; then
+# The player's gauge (BATTERY_PROFILE=device, type Mains) has no status attribute.
+if [ -d "$B" ] && [ "$(cat "$B/type" 2>/dev/null)" != Mains ]; then
   if [ "$(cat "$ROOTFS/emu/usb-connected" 2>/dev/null || true)" = 1 ]; then
     printf 'Charging\n' > "$B/status"
   else

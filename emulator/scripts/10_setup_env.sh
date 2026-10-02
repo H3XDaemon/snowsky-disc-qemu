@@ -130,7 +130,7 @@ if [ -n "$SD_CONTENT" ]; then
   rm -f "$T/README.md" "$T/.gitkeep" 2>/dev/null || true
   sync; umount "$T"; rmdir "$T"
   fi
-  LOOP="$(losetup -f --show "$IMG")"
+  LOOP="$(loop_attach "$IMG")"
   # Expose as REAL device nodes (not symlinks): a symlink -> /dev/loop0 can't be resolved from
   # inside the guest's chroot (it has no /dev/loop0), so the guest's own `mount /dev/mmcblk0p1`
   # would fail. mknod with the loop's major(7)/minor lets the guest mount the FAT directly.
@@ -147,11 +147,13 @@ fi
 
 # 5) Battery fuel gauge (cw2215). Without a healthy capacity the UI shows the
 #    "battery too low, shutting down" countdown instead of booting.
-log "Battery sysfs: cw221X-bat = 100%, Full"
-B="$ROOTFS/sys/class/power_supply/cw221X-bat"; mkdir -p "$B"
-printf Battery > "$B/type";     printf 100 > "$B/capacity"; printf Full > "$B/status"
-printf Good    > "$B/health";   printf 1   > "$B/present";  printf Li-ion > "$B/technology"
-printf 4200000 > "$B/voltage_now"; printf 250 > "$B/temp";  printf 1 > "$B/online"
+#    BATTERY_PROFILE=device gives the player's attribute set (type Mains, current_now,
+#    cycle_count, no status/online); BATTERY_CAPACITY / BATTERY_VOLTAGE_UV / BATTERY_TEMP
+#    choose the values (percent, microvolts, 0.1 degC). See emulator/docs/environment.md.
+log "Battery sysfs: cw221X-bat, ${BATTERY_PROFILE:-legacy} layout, ${BATTERY_CAPACITY:-100}%"
+python3 -B -m emulator.runtime.battery prepare --profile "${BATTERY_PROFILE:-legacy}" \
+  ${BATTERY_CAPACITY:+--capacity "$BATTERY_CAPACITY"} ${BATTERY_VOLTAGE_UV:+--voltage "$BATTERY_VOLTAGE_UV"} \
+  ${BATTERY_TEMP:+--temp "$BATTERY_TEMP"} >/dev/null
 
 # 5b) Seed /usr/data as the device's first boot does. On hardware /usr/data is a blank
 #     UBIFS partition that init scripts S98FIIO + fiio_init.sh populate from templates
@@ -189,12 +191,22 @@ if [ -f "$DB" ]; then
   # LANGUAGE is a 0-based index (switch in mq_ui FUN_004776e4): 0 zh(简体) 1 tw(繁體) 2 en
   # 3 ja 4 ko 5 es 6 it 7 de 8 pt 9 ru. Any in-range value ALSO skips the first-boot language
   # wizard (the wizard shows only while LANGUAGE is out of range, e.g. the fresh default 100).
-  # Default 2 = English. Override with LANG_CODE=<n>.
-  LANG_CODE="${LANG_CODE:-2}"
-  log "sysconfig.db: LOCAL_IMG_ANIM=0, BATTERY=100, LANGUAGE=$LANG_CODE"
-  sqlite3 "$DB" "UPDATE SYSCONFIG SET LOCAL_IMG_ANIM=0, BATTERY=100, LANGUAGE=$LANG_CODE;" || err "  sqlite update failed"
+  # The default profile sets LOCAL_IMG_ANIM=0, BATTERY=100 and LANGUAGE=$LANG_CODE (default 2 =
+  # English). SETTINGS_PROFILE selects another preset from emulator/settings/ (e.g. factory =
+  # what stock created, untouched); SETTINGS="COLUMN=INT,..." adds single values.
+  export LANG_CODE="${LANG_CODE:-2}"
+  SETTINGS_RESULT="$(python3 -B -m emulator.runtime.settings apply)" || { err "  settings were not applied"; exit 1; }
+  log "sysconfig.db: $SETTINGS_RESULT"
 else
   err "  could not create/find sysconfig.db — first real boot may stay on the splash"
+fi
+
+# 7) Serial number. The player keeps a 14-character SN in /usr/data/fiio/sn.txt; a fresh
+#    emulated /usr/data has none. DEVICE_SN writes one; empty leaves the file as it is.
+if [ -n "${DEVICE_SN:-}" ]; then
+  [[ "$DEVICE_SN" =~ ^[0-9A-Za-z]{14}$ ]] || { err "DEVICE_SN must be 14 letters or digits"; exit 1; }
+  printf '%s\n' "$DEVICE_SN" > "$ROOTFS/usr/data/fiio/sn.txt"
+  log "Serial number: $DEVICE_SN"
 fi
 
 log "Environment ready. Next: emulator/scripts/20_boot.sh"

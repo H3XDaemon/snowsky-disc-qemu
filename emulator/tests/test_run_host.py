@@ -153,6 +153,12 @@ if args == ['config', '--environment']:
         self.run_launcher('keys', 'arm', 'play')
         self.assertEqual(self.calls()[-1][7:], ['exec', '-T', 'emulator', 'python3', '-B', '-m',
                                                'emulator.runtime.gpio', 'arm', 'play'])
+        self.run_launcher('battery', 'set', '--capacity', '4')
+        self.assertEqual(self.calls()[-1][7:], ['exec', '-T', 'emulator', 'python3', '-B', '-m',
+                                               'emulator.runtime.battery', 'set', '--capacity', '4'])
+        self.run_launcher('settings', 'apply', '--profile', 'factory')
+        self.assertEqual(self.calls()[-1][7:], ['exec', '-T', 'emulator', 'python3', '-B', '-m',
+                                               'emulator.runtime.settings', 'apply', '--profile', 'factory'])
 
     def test_up_image_mounts_the_image_folder_and_never_edits_env(self):
         image = self.caller / 'candidate image.bin'

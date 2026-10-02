@@ -69,6 +69,11 @@ Active firmware: **V2.57**. Local protocol research is finalized in
   [Stock init and power events](emulator/docs/stock-init.md).
 - Keys held at power-on: static guest programs read the Volume and Play pin levels
   from `/dev/mem`, in step with the viewer's buttons. [Keys](emulator/docs/keys.md#keys-held-at-power-on).
+- Guest environment presets: a battery gauge laid out like the player's with
+  adjustable charge, serial number, USB cable state at boot, selectable stock
+  settings profiles (including the untouched factory state), unlimited guest
+  lifetime and power-off handling without the viewer.
+  [Environment](emulator/docs/environment.md).
 - Daily OTA catalog monitoring with tracking issues; no automatic firmware
   download or promotion. Optional viewer Power-on script for custom startup.
 

@@ -154,6 +154,9 @@ takes a rootfs image built on stock. Key pin levels for static programs live in 
 sparse `/dev/mem` (`emulator/runtime/gpio.py`). The direct boot stays the default: change it
 only behind a flag. Read `emulator/docs/stock-init.md` before touching either path.
 Never change the flags of the shared `qemu-mipsel` binfmt entry (other containers use it).
+Guest presets are setup/boot variables (`BATTERY_PROFILE`, `DEVICE_SN`, `USB_POWER`,
+`SETTINGS_PROFILE`, `SETTINGS`, `POWER_WATCH`, `GUEST_TTL=0`); see `emulator/docs/environment.md`.
+Defaults must keep producing the original guest. The guest clock cannot be shifted (same page).
 
 ## Conventions
 

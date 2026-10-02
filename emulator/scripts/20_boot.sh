@@ -40,6 +40,8 @@ case "${BOOT_MODE:-direct}" in
 
     # Announce as soon as the stock network detector subscribes, overlapping UI startup.
     bash "$REPO/emulator/scripts/16_network.sh" announce
+    # POWER_WATCH=1: serve the stock idle power-off without a viewer (emulator/docs/environment.md).
+    if [ "${POWER_WATCH:-0}" = 1 ]; then python3 -B -m emulator.runtime.power_watch start >/dev/null; fi
     ;;
   init)
     # Stock boot: rcS -> S98FIIO -> fiio_init.sh starts and watches both programs.

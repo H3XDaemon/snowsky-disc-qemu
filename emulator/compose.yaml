@@ -28,6 +28,16 @@ services:
       BOOT_MODE: ${BOOT_MODE:-direct}   # direct, or init = stock rcS/fiio_init.sh (docs/stock-init.md)
       USERDATA_MB: ${USERDATA_MB:-}     # set once (e.g. 83) to make /usr/data a size-limited image
       SDCARD_KEEP: ${SDCARD_KEEP:-0}    # 1 = setup keeps the existing card image
+      # Guest environment presets (emulator/docs/environment.md); empty keeps the defaults.
+      POWER_WATCH: ${POWER_WATCH:-0}    # 1 = direct boot serves the idle power-off without a viewer
+      USB_POWER: ${USB_POWER:-}         # 1/0 = cable state at every boot; empty = stored state
+      BATTERY_PROFILE: ${BATTERY_PROFILE:-}   # legacy (default) or device
+      BATTERY_CAPACITY: ${BATTERY_CAPACITY:-}
+      BATTERY_VOLTAGE_UV: ${BATTERY_VOLTAGE_UV:-}
+      BATTERY_TEMP: ${BATTERY_TEMP:-}
+      DEVICE_SN: ${DEVICE_SN:-}         # 14 characters -> /usr/data/fiio/sn.txt
+      SETTINGS_PROFILE: ${SETTINGS_PROFILE:-} # emulator (default), factory, always-on
+      SETTINGS: ${SETTINGS:-}           # COLUMN=INT,... on top of the profile
       STREAM_FPS: ${STREAM_FPS:-12}
       DEVICE_BOOT_SCRIPT: ${DEVICE_BOOT_SCRIPT:-} # empty keeps the stock viewer Power-on path
     stop_grace_period: 2s

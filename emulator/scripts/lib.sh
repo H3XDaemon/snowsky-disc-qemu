@@ -30,7 +30,10 @@ apply_ulimits(){
 
 # Stop only processes chrooted into this guest, including its popen children.
 # Do not pkill every qemu process: another rootfs may be running in this container.
-kill_guest(){ ROOTFS="$ROOTFS" python3 -m emulator.runtime.keys stop; }
+kill_guest(){
+  ROOTFS="$ROOTFS" python3 -m emulator.runtime.power_watch stop >/dev/null   # no-op unless POWER_WATCH started one
+  ROOTFS="$ROOTFS" python3 -m emulator.runtime.keys stop
+}
 
 # qemu-user shares the Docker VM kernel. Firmware children must not reconfigure
 # interfaces, set wall/RTC clocks, reboot the VM, or load modules. Keep SYS_ADMIN
@@ -83,6 +86,15 @@ image_loops(){
   losetup -j "$1" 2>/dev/null | cut -d: -f1
 }
 
+# Attach an image to a free loop device and print its path. The container's /dev is a
+# snapshot taken when it started: a loop device the VM creates now has no node here.
+loop_attach(){
+  local loop; loop="$(losetup -f)"
+  [ -b "$loop" ] || mknod "$loop" b 7 "${loop##*loop}"
+  losetup "$loop" "$1"
+  printf '%s\n' "$loop"
+}
+
 # --- /usr/data as its own filesystem -------------------------------------------
 # With USERDATA_MB, 10_setup_env.sh creates $WORK/userdata.img (ext4, the size of
 # the player's userdata partition). Once the image exists it IS /usr/data: a loop
@@ -92,7 +104,7 @@ userdata_attach(){
   [ -f "$USERDATA_IMG" ] || return 0
   local loop
   loop="$(image_loops "$USERDATA_IMG" | head -n1)"
-  [ -n "$loop" ] || loop="$(losetup -f --show "$USERDATA_IMG")"
+  [ -n "$loop" ] || loop="$(loop_attach "$USERDATA_IMG")"
   if [ "$(stat -c '%t:%T' "$ROOTFS/dev/ubi1_0" 2>/dev/null)" != "$(stat -c '%t:%T' "$loop")" ]; then
     rm -f "$ROOTFS/dev/ubi1_0"
     mknod "$ROOTFS/dev/ubi1_0" b 7 "${loop##*loop}"

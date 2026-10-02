@@ -1,0 +1,4 @@
+{
+  "description": "As the player after a firmware install: the database stock creates on its first boot, untouched. The first-boot language wizard is shown and the boot-logo overlay is enabled.",
+  "sysconfig": {}
+}
