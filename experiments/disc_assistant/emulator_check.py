@@ -16,7 +16,7 @@ from experiments.disc_assistant.assistant.nlu.intents import ControlIntent
 from experiments.disc_assistant.assistant.playback import execute
 from experiments.disc_assistant.assistant.queue import observe as queue_observe
 from experiments.disc_assistant.assistant.session import sync
-from experiments.disc_assistant.library.store import Store
+from library.store import Store
 from tests.fixtures.fixture import generate, NAMES
 from tests.integration.scan_cancel_check import scan
 from tests.integration.track_end_check import observe

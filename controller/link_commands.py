@@ -1,6 +1,6 @@
 """Shared reviewed commands for sequential and persistent TCP transports.
 
-The persistent transport inherits only this surface, not raw settings/reset/scan.
+The persistent transport adds narrow sound commands separately, never raw reset/PEQ.
 """
 from typing import Any, Protocol
 from controller.compatibility import require
@@ -76,6 +76,13 @@ class ReviewedCommands:
         verify_artist(http, artist, index, album)
         self.socket.sendall(frame(*command))
 
+    def play_genre(self, genre: str, index: int | None = None, *, album: str | None = None, http: Any) -> None:
+        from controller.fiio_library import genre_command, verify_genre
+        command = genre_command(genre, index, album)
+        require(self.settings().get('soc_version'), 'genre_playback')
+        verify_genre(http, genre, index, album)
+        self.socket.sendall(frame(*command))
+
     def play_album(self, album: str, index: int | None = None, *, http: Any) -> None:
         """Play a complete named album after fresh source bounds verification."""
         command = album_command(album, index)
@@ -83,3 +90,24 @@ class ReviewedCommands:
         require(version, 'album_playback')
         verify_album(http, album, index)
         self.socket.sendall(frame(*command))
+
+    def play_playlist(self, position: int, index: int | None = None, *, http: Any, expected_name: str) -> None:
+        from controller.fiio_playlist import playlist_command, verify_playlist
+        command = playlist_command(position, index, expected_name)
+        require(self.settings().get('soc_version'), 'playlist_playback')
+        verify_playlist(http, position, index, expected_name)
+        self.socket.sendall(frame(*command))
+
+    def play_catalog_track(self, index: int, *, favorites: bool = False, http: Any) -> None:
+        position = hex_value(index)
+        if type(favorites) is not bool:
+            raise ValueError('favorites must be a boolean')
+        require(self.settings().get('soc_version'), 'catalog_playback')
+        category = 'love/song' if favorites else 'all/song'
+        page = http.catalog(category, offset=index, limit=1)
+        if index >= page['total'] or len(page['items']) != 1:
+            raise ValueError('position outside current catalog')
+        self.socket.sendall(frame('0100', position + ('0006' if favorites else '0001')))
+
+    def seek(self, position_ms: int) -> None:
+        self.socket.sendall(frame('0103', hex_value(position_ms, 0x7fffffff, 8)))

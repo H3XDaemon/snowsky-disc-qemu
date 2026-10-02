@@ -129,7 +129,7 @@ Physical acceptance (#23) and speech quality/native-Docker/Orange Pi performance
   `assistant/voice/`; see `experiments/disc_assistant/docs/guides/voice-adapters.md`. Web selects Whisper Server or optional resident Sherpa RU per audio request;
   changing engines restores Preview, with no fallback. Piper replies require browser sound opt-in.
   Assistant owns interpretation, response locale, search/ranking and history;
-  `library/` owns catalog snapshots/indexing. Shared persistent state and guarded
+  Root `library/` owns shared catalog snapshots/indexing; read `library/AGENTS.md` before changing it. Shared persistent state and guarded
   playback belong in [Controller](controller/docs/api.md), with no research imports.
 - Preserve one action per request, one saved input/response locale and fresh
   selection/queue checks. Never automatically replay an uncertain mutation.

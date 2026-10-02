@@ -138,6 +138,7 @@ fi
 compose exec -T emulator bash /repo/emulator/scripts/20_boot.sh
 if [ "$CI_SCENARIO" = queue ]; then
   compose exec -T emulator python3 -B -m tests.integration.queue_check --fresh
+  compose exec -T emulator python3 -B -m tests.integration.web_session_check
   exit 0
 fi
 if [ "$CI_SCENARIO" = queue-reads ]; then
@@ -145,6 +146,7 @@ if [ "$CI_SCENARIO" = queue-reads ]; then
   exit 0
 fi
 if [ "$CI_SCENARIO" = settings ]; then
+  compose exec -T emulator python3 -B -m tests.integration.sound_session_check
   compose exec -T emulator python3 -B -m tests.integration.settings_check
   exit 0
 fi
@@ -163,11 +165,13 @@ compose exec -T emulator python3 -B -m tests.integration.controls
 compose exec -T emulator python3 -B -m tests.integration.remote_control
 compose exec -T emulator python3 -B -m tests.integration.queue_check
 compose exec -T emulator python3 -B -m tests.integration.queue_reads_check
+compose exec -T emulator python3 -B -m tests.integration.web_session_check
 compose exec -T emulator python3 -B -m tests.integration.http_check
 if has_scenario playlists; then
   compose exec -T emulator python3 -B -m tests.integration.playlists_check
 fi
 compose exec -T emulator python3 -B -m tests.integration.settings_check
+compose exec -T emulator python3 -B -m tests.integration.sound_session_check
 compose exec -T emulator python3 -B -m tests.integration.modes_themes_check
 compose exec -T emulator bash /repo/tests/integration/confinement.sh
 if full_scenario library; then

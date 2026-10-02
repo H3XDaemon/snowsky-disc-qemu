@@ -234,6 +234,8 @@ The workflow first runs the firmware-free suite on the same commit, then:
     persistence, then restores settings. Both gain values and all six filters
     are exercised. Balance also checks left/right DAC
     attenuation mirrors at center, ±1 and ±20.
+    The separate persistent sound check changes/restores gain, balance, all six
+    filters and DRE through `DiscSession`, and rejects a stale displayed value.
 11. Runs [modes/codecs/themes acceptance](../protocol/remote-modes-themes.md): USB/local/AirPlay
     control transitions, five codec preferences, five stock lock screens, exact
     custom PNG and metadata, and empty-body/activation quirks. TCP/WS and direct/proxy
@@ -276,7 +278,7 @@ FW_VERSION=2.57 CI_LOGS="$PWD/work/ci-v257" bash ci/integration.sh /absolute/pat
 CI_SCENARIO=queue FW_VERSION=2.57 bash ci/integration.sh /absolute/path/to/main_os/ota_v257
 # Focused 0105/0426 reads, including an initially empty queue on TCP and WS.
 CI_SCENARIO=queue-reads FW_VERSION=2.57 bash ci/integration.sh /absolute/path/to/main_os/ota_v257
-# Focused settings/PEQ and channel-balance checks over TCP and WS.
+# Focused settings/PEQ and balance over TCP/WS, plus guarded persistent sound settings.
 CI_SCENARIO=settings FW_VERSION=2.57 bash ci/integration.sh /absolute/path/to/main_os/ota_v257
 # Stock/system and four custom styles via direct/proxied HTTP; no media scan.
 CI_SCENARIO=themes FW_VERSION=2.57 bash ci/integration.sh /absolute/path/to/main_os/ota_v257

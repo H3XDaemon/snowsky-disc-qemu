@@ -1,4 +1,16 @@
 """Bounded stock HTTP pagination; no local catalog or snapshot storage."""
+def verify_expected(rows, expected):
+    """Compare a displayed positional source with fresh device rows before a write."""
+    if expected is None:
+        return
+    from controller.models import QueueItem
+    if not isinstance(expected, tuple) or any(not isinstance(row, QueueItem) for row in expected):
+        raise ValueError('expected source must be an immutable tuple of QueueItem rows')
+    actual = tuple(QueueItem(row['pos'], row['name'], row['author']) for row in rows)
+    if actual != expected:
+        raise CatalogChanged('displayed source changed; refresh before selecting a track')
+
+
 class CatalogChanged(ValueError):
     def __init__(self, message, *, diagnostics=None):
         super().__init__(message)

@@ -28,7 +28,7 @@ owner decisions. NLU already is an ordinary Assistant subsystem.
 - `assistant/application.py` owns the common flow; console and web are adapters.
   `assistant/nlu/` owns executing rules and typed intentions. Optional learned
   sources stay shadow-only and excluded from execution arbitration.
-- `library/` owns catalog observations, snapshot storage and retrieval/ranking
+- Root `library/` (shared with DISC Web) owns catalog observations, snapshot storage and retrieval/ranking
   support. Source artist tags remain exact device selectors; derived artist
   membership requires `/index` when its projection changes, not another `/sync`.
 - Controller owns persistent device state, guarded operations and compatibility.

@@ -3,8 +3,8 @@ from difflib import SequenceMatcher
 import re
 
 from experiments.disc_assistant.assistant.nlu.languages import normalized
-from experiments.disc_assistant.library.transliteration import fold
-from experiments.disc_assistant.library.artists import artist_names
+from library.transliteration import fold
+from library.artists import artist_names
 
 
 def artist_similarity(query, credit, aliases):

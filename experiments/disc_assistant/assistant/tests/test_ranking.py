@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, Mock
 from experiments.disc_assistant.assistant.nlu.intents import parse as parse_text, Intent
 from experiments.disc_assistant.assistant.nlu.languages import load_languages
 from experiments.disc_assistant.assistant.ranking import rank, score_tracks, ordered
-from experiments.disc_assistant.library.tests.helpers import TRACKS, ALIASES
-from experiments.disc_assistant.library.store import Store, StaleSnapshot
+from library.tests.helpers import TRACKS, ALIASES
+from library.store import Store, StaleSnapshot
 
 
 def parse(text, rules=None):
@@ -180,7 +180,7 @@ class RankingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['candidates'], [])
 
     async def test_collaboration_matches_each_member_but_keeps_device_credit(self):
-        from experiments.disc_assistant.library.catalog import Track
+        from library.catalog import Track
         tracks = [Track('Stan', 'Eminem;Dido', 'Album', 0, {}),
                   Track('Other', 'Eminem', 'Solo', 0, {}),
                   Track('Stan', 'Someone Else', 'Cover', 0, {})]
@@ -198,7 +198,7 @@ class RankingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(artist['candidates'][0]['artist'], 'Eminem;Dido')
 
     async def test_member_alias_cannot_override_literal_member_and_fuzzy_retrieval_is_scoped(self):
-        from experiments.disc_assistant.library.catalog import Track
+        from library.catalog import Track
         tracks = [Track('Stan', 'Eminem;Dido', 'Album', 0, {}),
                   Track('Stan', 'Wrong;Guest', 'Cover', 0, {})]
         self.head = self.store.publish('test', tracks, {}, expected_generation=self.head['generation'])

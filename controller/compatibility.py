@@ -17,6 +17,7 @@ class Capability(str, Enum):
     CURRENT_TRACK = 'current_track'
     CURRENT_FAVORITE = 'current_favorite'
     VOLUME = 'volume'
+    SOUND_SETTINGS = 'sound_settings'
 
 
 DISC_HANDSHAKE = '0306'
@@ -29,11 +30,11 @@ class IdentityClient(Protocol):
 
 CONTRACTS = {
     240: frozenset({'network_check'}),
-    257: frozenset({'favorite_positions', 'playlist_playback', 'genre_playback',
+    257: frozenset({'audio_import', 'library_scan', 'favorite_positions', 'playlist_playback', 'playlist_edit', 'catalog_playback', 'seek', 'genre_playback',
                     'artist_playback', 'album_playback', 'folder_playback', 'network_check',
                     Capability.PERSISTENT_SESSION, Capability.PLAYBACK_CONTROL,
                     Capability.QUEUE_READ, Capability.QUEUE_NAVIGATION, Capability.CATALOG_SNAPSHOT,
-                    Capability.CURRENT_TRACK, Capability.CURRENT_FAVORITE, Capability.VOLUME}),
+                    Capability.CURRENT_TRACK, Capability.CURRENT_FAVORITE, Capability.VOLUME, Capability.SOUND_SETTINGS}),
 }
 
 

@@ -5,6 +5,7 @@ import socketserver
 import threading
 import time
 from controller.fiio_link import Frames, frame
+from controller.fiio_settings import SETTINGS, setting_command, setting_value
 
 
 class Handler(socketserver.BaseRequestHandler):
@@ -21,17 +22,47 @@ class Handler(socketserver.BaseRequestHandler):
                     if tag == '0599':
                         result, body = 'a599', b'0306'
                     elif tag == '0501':
-                        result, body = 'a501', json.dumps({'soc_version': 257, 'currentVolume': server.volume}).encode()
+                        result, body = 'a501', json.dumps({'soc_version': server.version, 'currentVolume': server.volume}).encode()
+                    elif tag in ('064a', '0712', '0603', '0813'):
+                        name = next(name for name in server.sound if SETTINGS[name][0] == tag)
+                        result, body = 'a' + tag[1:], setting_command(name, server.sound[name])[1].encode()
+                    elif tag in ('0649', '0713', '0653', '0812'):
+                        server.writes += 1
+                        if server.drop_write:
+                            self.request.shutdown(socket.SHUT_RDWR)
+                            return
+                        name = next(name for name in server.sound if SETTINGS[name][1] == tag)
+                        if not server.ignore_sound_write:
+                            server.sound[name] = setting_value(name, payload)
+                        continue
                     elif tag == '0105':
                         result, body = 'a102', f'{server.mode:04X}'.encode()
                     elif tag == '0102':
                         server.mode = int(payload, 16)
                         server.writes += 1
                         result, body = 'a102', payload
+                    elif tag == '0622':
+                        server.writes += 1
+                        if server.drop_write:
+                            self.request.shutdown(socket.SHUT_RDWR)
+                            return
+                        self.request.sendall(frame('a60a', '000F'))
+                        self.request.sendall(frame('a622', '0003'))
+                        if server.delay_tag == '0622':
+                            server.release_reply.wait(2)
+                        result, body = 'a60a', b'0005'
                     elif tag == '0202':
                         if server.silent_now:
                             continue
                         result, body = 'a202', json.dumps(server.state).encode()
+                    elif tag == '0103':
+                        server.writes += 1
+                        if server.drop_write:
+                            self.request.shutdown(socket.SHUT_RDWR)
+                            return
+                        if server.state['state'] == 1:
+                            continue
+                        result, body = 'a103', f'{int(payload, 16) // 1000 * 1000:08X}'.encode()
                     elif tag in ('0104', '0502'):
                         server.writes += 1
                         if server.drop_write:
@@ -73,6 +104,9 @@ class Server(socketserver.ThreadingTCPServer):
         self.accepts, self.writes = 0, 0
         self.mode = 0
         self.volume = 30
+        self.version = 257
+        self.sound = {'gain': 0, 'balance': 0, 'filter': 0, 'dre': 0}
+        self.ignore_sound_write = False
         self.tags = []
         self.state = {'love': False, 'state': 0, 'playerflag': 7, 'song': {'song_name': 'Track',
                       'song_artist_name': 'Artist', 'song_album_name': 'Album', 'pos_id': 1}}

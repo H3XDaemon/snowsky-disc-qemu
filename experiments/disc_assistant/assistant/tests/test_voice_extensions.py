@@ -16,7 +16,7 @@ from experiments.disc_assistant.assistant.nlu import command_catalog
 from experiments.disc_assistant.assistant import context
 from experiments.disc_assistant.assistant.controls import execute
 from experiments.disc_assistant.assistant.ranking import rank
-from experiments.disc_assistant.library.store import Store
+from library.store import Store
 from controller.catalog import CatalogChanged
 from controller.tests.test_current import FakeClient
 from controller.compatibility import CONTRACTS, Capability
@@ -105,8 +105,8 @@ class VoiceExtensionTests(unittest.TestCase):
         from contextlib import redirect_stdout
         import io
         from experiments.disc_assistant.assistant import __main__ as cli
-        from experiments.disc_assistant.library.tests.helpers import TRACKS
-        from experiments.disc_assistant.library.search.typesense import signature
+        from library.tests.helpers import TRACKS
+        from library.search.typesense import signature
         with Store(self.config.data_dir) as store:
             head = store.publish('test', TRACKS, {}, expected_generation=None)
             store.publish_index('test', head['generation'], 'test', signature({}, ['http', '127.0.0.1', 8108]))
@@ -166,7 +166,7 @@ class ContextRankingTests(unittest.IsolatedAsyncioTestCase):
                       ('Song', 'Z Artist', 'Z Album'), ('Hidden', 'Z Artist', 'B Album'),
                       ('Remote', 'A Other', 'A Global')])]
         # Store accepts the same catalog projection used by the synthetic fixtures.
-        from experiments.disc_assistant.library.catalog import Track
+        from library.catalog import Track
         tracks = [Track(t['title'], t['artist'], t['album'], 0, {'pos': 0, 'name': t['title'], 'author': t['artist']}) for t in tracks]
         head = self.store.publish('test', tracks, {}, expected_generation=None)
         self.store.publish_index('test', head['generation'], 'index', 'sig')

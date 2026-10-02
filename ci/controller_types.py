@@ -15,5 +15,7 @@ def consumer(client: LiveClient) -> None:
     assert_type(player.set_favorite(True).playback.favorite, bool | None)
     assert_type(player.set_volume(40).volume, int | None)
     assert_type(player.adjust_volume(-20).previous_volume, int | None)
+    assert_type(player.sound_settings(expected_generation=1), CommandResult)
+    assert_type(player.set_sound_setting('gain', 1, expected=0, expected_generation=1), CommandResult)
     assert_type(player.pause(), CommandResult)
     assert_type(player.play_album('Album'), CommandResult)

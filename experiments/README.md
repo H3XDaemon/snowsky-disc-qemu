@@ -5,6 +5,7 @@ Their location does not imply equal maturity or extend firmware support.
 
 | Project | Status and verified scope | Start here |
 | --- | --- | --- |
+| DISC Web | Independent experimental music remote; responsive UI, isolated demo and bounded live Controller facade. | [README](disc_web/README.md), [status](disc_web/docs/status.md) |
 | Disc Assistant | Active text/voice application; software MVP accepted against stock V2.57. Quantified physical/speech acceptance remains separate. | [README](disc_assistant/README.md), [status](disc_assistant/docs/status.md) |
 | Browser | Active TinyEMU/WASM prototype; experimental boot/UI evidence, separate from the supported qemu-user runtime. | [README](browser/README.md), [results](browser/docs/overview.md) |
 | diskOS preview | Historical, unsupported source-built V2.40 preview; no recurring firmware acceptance gate. | [README](diskos/README.md), [results](diskos/docs/preview.md) |

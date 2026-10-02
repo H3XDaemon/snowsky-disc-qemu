@@ -6,10 +6,10 @@ import os
 from pathlib import Path
 import time
 from types import SimpleNamespace
-from experiments.disc_assistant.library.catalog import Track
-from experiments.disc_assistant.library.store import Store
-from experiments.disc_assistant.library.search.typesense import Search, create_client
-from experiments.disc_assistant.library.transliteration import fold
+from library.catalog import Track
+from library.store import Store
+from library.search.typesense import Search, create_client
+from library.transliteration import fold
 from experiments.disc_assistant.assistant.nlu.intents import Intent
 from experiments.disc_assistant.assistant.nlu.languages import load_languages
 from experiments.disc_assistant.assistant.ranking import score_tracks, ordered

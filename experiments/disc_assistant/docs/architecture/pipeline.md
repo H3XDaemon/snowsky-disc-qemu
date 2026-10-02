@@ -144,7 +144,7 @@ language. `/response` controls only `none|errors|all` speech eligibility. Help a
 technical diagnostics remain English; localized user feedback is `response.text`.
 
 Metadata version labels are separate from command language. The library's
-[`version_markers.toml`](../../library/version_markers.toml)
+[`version_markers.toml`](../../../../library/version_markers.toml)
 recognizes recording conventions such as `Live` and `Remastered` even when Russian
 is active. The locale's version phrases describe requested constraints; they also
 extend metadata recognition for localized labels. No sync/reindex is needed for a

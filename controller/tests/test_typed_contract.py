@@ -7,7 +7,7 @@ from controller import CommandResult, DeviceConfig, DiscSession, OperationStatus
 from controller.controls import observe
 from controller.device import MutationPacer
 from controller.fiio_link import Client, playback_snapshot
-from controller.models import PlaybackSnapshot
+from controller.models import Track, PlaybackSnapshot
 from controller.models import PlaybackSource
 from controller.session import LiveClient
 from controller.tests.session_fixture import Server
@@ -15,6 +15,27 @@ from controller.wire import settings_snapshot
 
 
 class WireContractTests(TestCase):
+    def test_optional_track_metadata_is_typed_without_coercion_or_identity_changes(self):
+        song = dict(song_name='Synthetic', song_sample_rate=44100, song_encoding_rate=16,
+                    song_channel=2, song_bit_rate=1411, song_style_name='Jazz', song_track=7,
+                    is_dsd=False, is_sacd=False, is_cue=True, is_m3u=False)
+        track = Track.from_wire({'song': song})
+        self.assertEqual(track.metadata, dict(sample_rate_hz=44100, bit_depth=16,
+            channels=2, reported_bit_rate=1411, genre='Jazz', track_number=7,
+            is_dsd=False, is_sacd=False, is_cue=True, is_m3u=False))
+        self.assertEqual(track.identity, Track.from_wire({'song': {'song_name': 'Synthetic'}}).identity)
+        for value in (None, True, False, 0, -1, '44100', 44.1, 2147483648):
+            invalid = dict(song, song_sample_rate=value, song_encoding_rate=value,
+                           song_channel=value, song_bit_rate=value, song_track=value)
+            parsed = Track.from_wire({'song': invalid})
+            for key in ('sample_rate_hz', 'bit_depth', 'channels', 'reported_bit_rate', 'track_number'):
+                self.assertIsNone(getattr(parsed, key))
+        for value in (0, 1, 'false', None):
+            self.assertIsNone(Track.from_wire({'song': dict(song, is_dsd=value)}).is_dsd)
+        self.assertEqual(Track.from_wire({'song': {'song_name': 'Synthetic'}}).metadata, {})
+        # The raw boundary retains future/invalid optional fields for diagnostics.
+        self.assertEqual(playback_snapshot(json.dumps({'song': dict(song, song_sample_rate='unknown')}).encode())['song']['song_sample_rate'], 'unknown')
+
     def test_malformed_scalar_types_do_not_become_playback_evidence(self):
         song = {'song_name': 'Track', 'pos_id': 1}
         for key, values in {'state': [True, False, 0.0, '0', None],
@@ -53,7 +74,8 @@ class WireContractTests(TestCase):
 
     def test_persistent_client_has_no_raw_destructive_surface(self):
         self.assertFalse(issubclass(LiveClient, Client))
-        for method in ('scan_library', 'reset_library', 'set_device_setting', 'set_peq', 'seek'):
+        self.assertTrue(hasattr(LiveClient, 'seek'))  # Reviewed, paced, one attempt per operation.
+        for method in ('scan_library', 'reset_library', 'set_device_setting', 'set_peq'):
             self.assertFalse(hasattr(LiveClient, method), method)
 
 

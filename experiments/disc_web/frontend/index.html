@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f8f7f4"><title>DISC — ваша музыка</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script>
+</head>
+<body>
+<a href="#main" class="skip-link"><span data-i18n="skip_to_content">К содержимому</span></a>
+<aside class="sidebar" aria-label="Главная навигация" data-i18n-aria-label="main_navigation">
+  <a class="brand" href="#home" aria-label="DISC — главная" data-i18n-aria-label="disc_home"><span class="brand-disc"></span><span>disc<span class="brand-dot">.</span></span></a>
+  <span class="brand-caption">YOUR MUSIC. YOUR SPACE.</span>
+  <nav id="navigation">
+    <button class="nav-item active" data-view="home"><span data-icon="home"></span><span data-i18n="home">Главная</span></button>
+    <p class="nav-label"><span data-i18n="my_collection">МОЯ КОЛЛЕКЦИЯ</span></p>
+    <button class="nav-item" data-view="albums"><span data-icon="album"></span><span data-i18n="albums">Альбомы</span></button>
+    <button class="nav-item" data-view="artists"><span data-icon="artist"></span><span data-i18n="artists">Исполнители</span></button>
+    <button class="nav-item" data-view="tracks"><span data-icon="music"></span><span data-i18n="tracks">Треки</span></button>
+    <button class="nav-item" data-view="favorites"><span data-icon="heart"></span><span data-i18n="favorites">Любимое</span></button>
+    <button class="nav-item" data-view="playlists"><span data-icon="playlist"></span><span data-i18n="playlists">Плейлисты</span></button>
+  </nav>
+  <div class="sidebar-note"><span class="tiny-disc"></span><p><span data-i18n="good_music">Хорошая музыка.</span><br><span data-i18n="always_within_reach">Всегда под рукой.</span></p></div>
+  <button id="device-button" class="device-card"><span class="device-glyph" data-icon="device"></span><span><strong>SNOWSKY DISC</strong><small id="connection-label"><span data-i18n="disconnected">Не подключён</span></small></span><span class="status-light" id="status-light"></span></button>
+</aside>
+<div class="workspace">
+  <header class="topbar">
+    <div class="breadcrumb">SNOWSKY <span>/</span> <strong id="breadcrumb"><span data-i18n="home">Главная</span></strong></div>
+    <label class="search"><span data-icon="search"></span><input id="search" type="search" placeholder="Найти в коллекции" autocomplete="off" aria-label="Поиск в текущем разделе" data-i18n-placeholder="search_your_collection" data-i18n-aria-label="search_this_section"><kbd>/</kbd></label>
+    <button class="import-button" id="open-import" aria-label="Добавить музыку" data-i18n-aria-label="import_music"><span data-icon="upload"></span><span data-i18n="import_music">Добавить музыку</span><i id="import-active" hidden></i></button>
+    <button class="icon-button" id="refresh" aria-label="Синхронизация коллекции" title="Синхронизация коллекции" data-i18n-aria-label="catalogue_dialog_title" data-i18n-title="catalogue_dialog_title"><span data-icon="refresh"></span></button>
+    <button class="icon-button mobile-device" id="mobile-device" aria-label="Подключение к DISC" data-i18n-aria-label="disc_connection"><span data-icon="device"></span></button>
+    <button class="icon-button" id="theme-button" aria-label="Оформление" data-i18n-aria-label="appearance"><span data-icon="moon"></span></button>
+    <button class="icon-button" id="open-sound" aria-label="Настройки звука" title="Настройки звука" data-i18n-aria-label="sound_title" data-i18n-title="sound_title"><span data-icon="sliders"></span></button>
+    <label class="language-control"><select id="language" aria-label="Язык интерфейса" data-i18n-aria-label="language"><option value="ru">RU</option><option value="en">EN</option></select></label><span class="edition">WEB <span class="edition-dot"></span> PREVIEW</span>
+  </header>
+  <div class="mode-banner" id="mode-banner" hidden><span><span class="demo-dot"></span> <span data-i18n="demo_collection_no_audio">Демо-коллекция · без звука</span> <span class="banner-detail"><span data-i18n="fictional_artists">· вымышленные исполнители</span></span></span><button id="about-demo"><span data-i18n="about_demo">О демо</span> <span>↗</span></button></div>
+  <main id="main" tabindex="-1"><div class="loading-shell"><span data-i18n="loading_your_collection">Загружаем вашу коллекцию…</span></div></main>
+  <footer class="page-footer"><span><span data-i18n="collected_by_you_played_your_way">Собрано вами. Звучит по-вашему.</span></span><span>DISC WEB · EXPERIMENTAL</span></footer>
+</div>
+
+<section class="player" aria-label="Плеер" data-i18n-aria-label="player">
+  <div class="now-playing"><button id="now-open" class="art-open" aria-controls="now-panel" aria-expanded="false" aria-label="Открыть панель воспроизведения" data-i18n-aria-label="open_now_playing"><span id="now-art" class="now-art"></span></button><div class="now-copy"><strong id="now-title"><span data-i18n="your_music_awaits">Ваша музыка ждёт</span></strong><span id="now-artist"><span data-i18n="choose_an_album">Выберите альбом</span></span></div><button id="favorite" class="icon-button" aria-label="Добавить текущий трек в любимое" aria-pressed="false" disabled data-i18n-aria-label="favorite_the_current_track"><span data-icon="heart"></span></button></div>
+  <div class="transport">
+    <div class="transport-buttons">
+      <button id="shuffle" class="icon-button" aria-label="Случайный порядок" aria-pressed="false" disabled data-i18n-aria-label="shuffle"><span data-icon="shuffle"></span></button>
+      <button id="previous" class="icon-button" aria-label="Предыдущий трек" disabled data-i18n-aria-label="previous_track"><span data-icon="previous"></span></button>
+      <button id="play" class="play-button" aria-label="Воспроизвести" disabled data-i18n-aria-label="play"><span data-icon="play"></span></button>
+      <button id="next" class="icon-button" aria-label="Следующий трек" disabled data-i18n-aria-label="next_track"><span data-icon="next"></span></button>
+      <button id="repeat" class="icon-button" aria-label="Повторять очередь" aria-pressed="false" disabled data-i18n-aria-label="repeat_queue"><span data-icon="repeat"></span></button>
+    </div>
+    <div class="timeline"><span id="position">—:—</span><input id="progress" class="seek-slider" type="range" min="0" max="100" value="0" step="1" disabled aria-label="Перемотка" data-i18n-aria-label="seek_position"><span id="duration">—:—</span></div>
+  </div>
+  <div class="player-tools"><span class="output-label" id="output-label"><span data-i18n="on_disc">НА DISC</span></span><span data-icon="volume"></span><input id="volume" type="range" min="0" max="120" value="0" aria-label="Громкость DISC" disabled data-i18n-aria-label="disc_volume"><output id="volume-value">—</output><span class="tool-divider"></span><button id="queue-button" class="icon-button" aria-controls="now-panel" aria-label="Открыть очередь" aria-expanded="false" data-i18n-aria-label="open_queue"><span data-icon="queue"></span></button></div>
+</section>
+<dialog id="device-dialog" class="connection-dialog" aria-labelledby="connection-title">
+  <div class="dialog-heading"><span class="eyebrow" data-i18n="your_player"></span><button class="icon-button" id="close-dialog" aria-label="Закрыть" data-i18n-aria-label="close"><span data-icon="close"></span></button></div>
+  <div class="connection-intro"><div class="dialog-disc"></div><div><h2 id="connection-title" data-i18n="connection_title"></h2><p id="device-description"></p></div></div>
+  <div id="device-endpoint" class="connection-status" role="status"></div>
+  <form id="connection-form">
+    <div id="connection-presets" class="connection-presets" hidden><button type="button" id="preset-player" class="secondary-button" data-i18n="connection_physical"></button><button type="button" id="preset-emulator" class="secondary-button" data-i18n="connection_emulator"></button></div>
+    <label class="connection-field"><span data-i18n="connection_ip"></span><input id="connection-host" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="192.168.1.100" required></label>
+    <details id="connection-advanced"><summary data-i18n="connection_advanced"></summary><div class="connection-ports"><label class="connection-field"><span data-i18n="connection_tcp"></span><input id="connection-tcp" type="number" min="1" max="65535" step="1" required></label><label class="connection-field"><span data-i18n="connection_http"></span><input id="connection-http" type="number" min="1" max="65535" step="1" required></label></div></details>
+    <p class="connection-hint" data-i18n="connection_saved"></p>
+    <div class="connection-actions"><button type="button" id="disconnect-player" class="text-button" data-i18n="disconnect"></button><button type="submit" id="connect" class="primary-button" data-i18n="connect"></button></div>
+    <p id="connection-feedback" class="connection-feedback" role="status"></p>
+  </form>
+  <section id="discovery-section" class="discovery-section"><h3 data-i18n="connection_nearby"></h3><p data-i18n="connection_discovery_help"></p><div class="discovery-controls"><label class="connection-field"><span data-i18n="connection_interface"></span><select id="discovery-interface"></select></label><button id="discover-player" class="secondary-button" data-i18n="connection_find"></button></div><p id="discovery-feedback" role="status"></p><div id="discovery-results"></div></section>
+  <p class="dialog-footnote" data-i18n="disconnect_assistant_or_fiio_control_first_disc_accepts_one_control_connection"></p>
+</dialog>
+<dialog id="track-dialog" class="track-dialog" aria-label="Действия с треком" data-i18n-aria-label="track_actions">
+  <div class="track-menu-heading"><div id="menu-art"></div><div><strong id="menu-title"></strong><small id="menu-artist"></small></div><button class="icon-button" id="close-track-menu" aria-label="Закрыть" data-i18n-aria-label="close"><span data-icon="close"></span></button></div>
+  <dl id="menu-metadata" class="track-metadata" hidden></dl>
+  <div role="menu" id="track-menu">
+    <button role="menuitem" data-track-action="play"><span data-icon="play"></span><span data-i18n="play">Воспроизвести</span></button>
+    <button role="menuitem" data-track-action="add"><span data-icon="playlist"></span><span data-i18n="add_to_playlist">Добавить в плейлист</span></button>
+    <div class="menu-divider"></div>
+    <button role="menuitem" data-track-action="album"><span data-icon="album"></span><span data-i18n="go_to_album">Перейти к альбому</span></button>
+    <button role="menuitem" data-track-action="artist"><span data-icon="artist"></span><span data-i18n="go_to_artist">Перейти к исполнителю</span></button>
+    <button role="menuitem" class="menu-remove" data-track-action="remove"><span data-icon="close"></span><span data-i18n="remove_from_playlist">Убрать из плейлиста</span></button>
+  </div>
+</dialog>
+<aside id="now-panel" class="now-panel" aria-label="Плеер" data-i18n-aria-label="player" hidden>
+<div class="listening-heading"><span class="eyebrow">SNOWSKY DISC</span><button id="close-now" class="icon-button" aria-label="Свернуть плеер" data-i18n-aria-label="minimize_player"><span data-icon="close"></span></button></div>
+  <div class="listening-tabs" role="group" data-i18n-aria-label="player_view">
+    <button id="listening-tab" aria-pressed="true" aria-controls="listening-main" data-i18n="now_playing"></button>
+    <button id="listening-queue-tab" aria-pressed="false" aria-controls="listening-queue" data-i18n="queue"></button>
+  </div>
+  <div class="listening-layout">
+    <section id="listening-main" class="listening-main">
+      <div id="large-art" class="large-art"></div>
+      <div class="listening-details">
+        <div class="listening-status"><span id="large-status"></span><span id="large-format" class="format-badge" hidden></span></div>
+        <h2 id="large-title"></h2>
+        <button id="large-artist" class="metadata-link"></button>
+        <button id="large-album" class="metadata-link album-link"></button>
+        <input id="large-progress" class="seek-slider" type="range" min="0" max="100" value="0" step="1" disabled aria-label="Перемотка" data-i18n-aria-label="seek_position"><p id="seek-feedback" class="seek-feedback" role="status"></p><div class="large-timeline"><span id="large-position">—:—</span><span id="large-duration">—:—</span></div><div class="large-controls"><button id="large-previous" class="icon-button" aria-label="Предыдущий трек" data-i18n-aria-label="previous_track"><span data-icon="previous"></span></button><button id="large-play" class="play-button" aria-label="Воспроизвести" data-i18n-aria-label="play"><span data-icon="play"></span></button><button id="large-next" class="icon-button" aria-label="Следующий трек" data-i18n-aria-label="next_track"><span data-icon="next"></span></button></div><div class="large-secondary"><button id="large-shuffle" class="icon-button" aria-label="Случайный порядок" aria-pressed="false" data-i18n-aria-label="shuffle"><span data-icon="shuffle"></span></button><button id="large-favorite" class="icon-button" aria-label="Любимый трек" aria-pressed="false" data-i18n-aria-label="favorite_track"><span data-icon="heart"></span></button><button id="large-repeat" class="icon-button" aria-label="Повторять очередь" aria-pressed="false" data-i18n-aria-label="repeat_queue"><span data-icon="repeat"></span></button></div><label class="large-volume"><span data-icon="volume"></span><input id="large-volume" type="range" min="0" max="120" value="0" aria-label="Громкость плеера" data-i18n-aria-label="player_volume"><output id="large-volume-value">—</output></label>
+        <dl id="large-metadata" class="track-metadata" hidden></dl>
+        <div class="listening-output"><span data-icon="device"></span><div><strong>SNOWSKY DISC</strong><p id="large-output"></p></div></div>
+      </div>
+    </section>
+    <section id="listening-queue" class="listening-queue" hidden data-i18n-aria-label="playback_queue">
+      <div class="listening-queue-heading"><div><span class="eyebrow" data-i18n="your_selection"></span><h2 data-i18n="queue"></h2></div><button id="large-refresh-queue" class="icon-button" data-i18n-aria-label="refresh_queue"><span data-icon="refresh"></span></button></div>
+      <div id="large-queue-content"></div>
+    </section>
+  </div>
+</aside>
+<div id="toast" class="toast" role="status" hidden></div>
+<dialog id="theme-dialog" aria-labelledby="theme-title"><div class="dialog-heading"><span class="eyebrow"><span data-i18n="your_space">ВАШЕ ПРОСТРАНСТВО</span></span><button class="icon-button" id="close-theme" aria-label="Закрыть оформление" data-i18n-aria-label="close_appearance_settings"><span data-icon="close"></span></button></div><h2 id="theme-title"><span data-i18n="in_your_own_light">В своём свете.</span></h2><p><span data-i18n="set_the_mood_for_your_music">Выберите настроение интерфейса.</span></p><div class="theme-options"><button data-theme-choice="light" aria-pressed="false"><span class="theme-swatch swatch-light"></span><span data-i18n="light">Светлая</span></button><button data-theme-choice="dark" aria-pressed="false"><span class="theme-swatch swatch-dark"></span><span data-i18n="dark">Тёмная</span></button><button data-theme-choice="system" aria-pressed="false"><span class="theme-swatch swatch-system"></span><span data-i18n="system">Системная</span></button></div><p class="dialog-footnote"><span data-i18n="saved_in_this_browser_system_follows_your_device_s_appearance">Выбор сохраняется в этом браузере. Системная тема следует настройкам устройства.</span></p></dialog>
+<dialog id="playlist-dialog" aria-labelledby="playlist-dialog-title">
+  <div class="dialog-heading"><span class="eyebrow" data-i18n="playlists">Плейлисты</span><button id="close-playlist" class="icon-button" aria-label="Закрыть" data-i18n-aria-label="close"><span data-icon="close"></span></button></div>
+  <h2 id="playlist-dialog-title"></h2><p id="playlist-track-label"></p>
+  <form id="playlist-form"><label id="playlist-name-label" class="form-field"><span data-i18n="playlist_name">Название плейлиста</span><input id="playlist-name" maxlength="100" autocomplete="off"></label><label id="playlist-select-label" class="form-field" hidden><span data-i18n="playlist_choose">Выберите плейлист</span><select id="playlist-select"></select></label><p class="dialog-footnote" data-i18n="playlist_no_files">Меняется только состав плейлиста. Файлы остаются на DISC.</p><p id="playlist-feedback" role="status"></p><button id="playlist-submit" type="submit" class="primary-button"></button></form>
+</dialog>
+<dialog id="catalogue-dialog" class="catalogue-dialog" aria-labelledby="catalogue-dialog-title">
+  <div class="dialog-heading"><span class="eyebrow" data-i18n="my_collection"></span><button id="close-catalogue" class="icon-button" data-i18n-aria-label="close"><span data-icon="close"></span></button></div>
+  <div class="import-intro"><div><h2 id="catalogue-dialog-title" data-i18n="catalogue_dialog_title"></h2><p data-i18n="catalogue_dialog_description"></p></div><div class="sync-art" aria-hidden="true"><span></span><span></span><span data-icon="refresh"></span></div></div>
+  <div id="catalogue-overview" class="catalogue-overview"><span id="catalogue-status" class="catalogue-status" role="status"></span><p id="catalogue-description"></p></div>
+  <div class="catalogue-workflow">
+    <ol id="catalogue-stages" class="catalogue-stages" data-i18n-aria-label="catalogue_stages">
+      <li data-stage="identity"><strong data-i18n="catalogue_stage_identity"></strong><small data-i18n="catalogue_step_identity_note"></small></li>
+      <li data-stage="catalog"><strong data-i18n="catalogue_stage_catalog"></strong><small data-i18n="catalogue_step_catalog_note"></small></li>
+      <li data-stage="enrichment"><strong data-i18n="catalogue_stage_enrichment"></strong><small data-i18n="catalogue_step_enrichment_note"></small></li>
+      <li data-stage="verification"><strong data-i18n="catalogue_stage_verification"></strong><small data-i18n="catalogue_step_verification_note"></small></li>
+    </ol>
+    <div id="catalogue-progress" class="catalogue-progress" role="progressbar" data-i18n-aria-label="catalogue_stages" hidden></div>
+    <p id="catalogue-activity" role="status" aria-live="polite"></p>
+    <p id="catalogue-error" role="status" hidden></p>
+  </div>
+  <dl id="catalogue-coverage" class="catalogue-coverage" hidden>
+    <div><dt data-i18n="catalogue_tracks"></dt><dd id="catalogue-track-count"></dd></div>
+    <div><dt data-i18n="catalogue_artwork"></dt><dd id="catalogue-artwork-count"></dd></div>
+    <div><dt data-i18n="catalogue_durations"></dt><dd id="catalogue-duration-count"></dd></div>
+  </dl>
+  <p id="catalogue-metadata-error" data-i18n="catalogue_metadata_unavailable" hidden></p>
+  <div class="catalogue-actions"><button id="reload-catalogue-view" class="text-button" data-i18n="catalogue_reload_view"></button><button id="sync-catalogue" class="primary-button"><span data-icon="refresh"></span><span id="sync-caption"></span></button></div>
+  <details class="catalogue-details"><summary data-i18n="catalogue_details"></summary><p data-i18n="catalogue_metadata_note"></p><p data-i18n="catalogue_workflow_note"></p></details>
+</dialog>
+<dialog id="import-dialog" class="import-dialog" aria-labelledby="import-title">
+  <div class="dialog-heading"><span class="eyebrow" data-i18n="import_eyebrow"></span><button id="close-import" class="icon-button" aria-label="Закрыть" data-i18n-aria-label="close"><span data-icon="close"></span></button></div>
+  <div class="import-intro"><div><h2 id="import-title" data-i18n="import_title"></h2><p data-i18n="import_description"></p></div><div class="import-art" aria-hidden="true"><span class="import-sleeve"></span><span class="import-record"></span><span class="import-plus">+</span></div></div>
+  <p id="import-notice" class="import-notice"></p>
+  <div class="import-workflow">
+    <ol id="import-steps" aria-label="Добавление музыки" data-i18n-aria-label="import_workflow">
+      <li data-i18n="import_step_card"></li><li data-i18n="import_step_index"></li><li data-i18n="import_step_saved"></li>
+    </ol>
+    <p id="import-flow-message" role="status"></p>
+    <p id="import-batch-count"></p>
+    <button id="import-open-library" class="primary-button" data-i18n="import_open_library" hidden></button>
+  </div>
+  <section class="import-transfer"><span class="eyebrow" data-i18n="import_step_transfer"></span>
+    <div id="import-drop" class="import-drop"><span data-icon="upload"></span><strong data-i18n="import_drop"></strong><small data-i18n="import_formats"></small><div class="import-choices"><button id="choose-import" class="secondary-button" data-i18n="import_choose"></button><button id="choose-folder" class="secondary-button" data-i18n="import_choose_folder"></button></div><input id="import-files" type="file" multiple accept=".flac,.wav,.mp3,.m4a,.aac,.ogg,.ape,.wma,.dsf,.dff" hidden><input id="import-folder" type="file" multiple webkitdirectory hidden></div>
+    <p id="import-folder-summary" class="import-folder-summary"></p>
+    <div id="import-list" class="import-list"></div>
+    <p id="import-restored" class="import-feedback" data-i18n="import_restored_job" hidden></p>
+    <div class="import-destination"><span data-icon="device"></span><div><strong data-i18n="import_destination"></strong><small data-i18n="import_no_overwrite"></small></div></div>
+    <div class="import-actions"><button id="clear-import" class="text-button" data-i18n="import_clear"></button><button id="send-import" class="primary-button" data-i18n="import_send"></button></div>
+    <p id="import-feedback" class="import-feedback" role="status"></p>
+  </section>
+  <section class="import-scan"><div><span class="eyebrow" data-i18n="import_step_scan"></span><h3 data-i18n="import_scan_title"></h3><p data-i18n="import_scan_description"></p></div><button id="scan-import" class="secondary-button" data-i18n="import_scan"></button><div id="scan-status" class="scan-status" role="status"></div></section>
+  <section class="import-scan import-sync"><div><span class="eyebrow" data-i18n="import_step_sync"></span><h3 data-i18n="import_sync_title"></h3><p data-i18n="import_sync_description"></p></div><button id="sync-import" class="secondary-button" data-i18n="catalogue_sync"></button><div id="import-sync-status" class="scan-status" role="status"></div></section>
+</dialog>
+<dialog id="sound-dialog" class="sound-dialog" aria-labelledby="sound-title">
+  <div class="dialog-heading"><span class="eyebrow">SNOWSKY DISC</span><button id="close-sound" class="icon-button" aria-label="Закрыть" data-i18n-aria-label="close"><span data-icon="close"></span></button></div>
+  <h2 id="sound-title" data-i18n="sound_title"></h2>
+  <p class="sound-description" data-i18n="sound_description"></p>
+  <p id="sound-notice" class="sound-notice" role="status"></p>
+  <button id="sound-refresh" class="text-button" data-i18n="sound_refresh"></button>
+  <div id="sound-fields" hidden>
+    <section class="sound-setting"><div><label for="sound-gain" data-i18n="sound_gain"></label><p data-i18n="sound_gain_note"></p></div><div class="sound-input"><select id="sound-gain"><option value="0" data-i18n="sound_low"></option><option value="1" data-i18n="sound_high"></option></select><button id="sound-apply-gain" class="secondary-button" data-i18n="sound_apply" data-i18n-aria-label="sound_apply_gain"></button></div></section>
+    <section class="sound-setting"><div><label for="sound-balance" data-i18n="sound_balance"></label><p data-i18n="sound_balance_note"></p></div><div class="sound-input"><div class="sound-balance"><output id="sound-balance-value" for="sound-balance">0</output><input id="sound-balance" type="range" min="-20" max="20" step="1" value="0" aria-label="Баланс каналов" data-i18n-aria-label="sound_balance"><div class="sound-range-labels"><span>L20</span><span>0</span><span>R20</span></div></div><button id="sound-apply-balance" class="secondary-button" data-i18n="sound_apply" data-i18n-aria-label="sound_apply_balance"></button></div></section>
+    <section class="sound-setting"><div><label for="sound-filter" data-i18n="sound_filter"></label><p data-i18n="sound_filter_note"></p></div><div class="sound-input"><select id="sound-filter"><option value="0">1 · FAST_LL</option><option value="1">2 · SLOW_LL</option><option value="2">3 · SLOW_PC</option><option value="3">4 · FAST_PC</option><option value="4">5 · NON_OS</option><option value="5">6 · Wideband_FF</option></select><button id="sound-apply-filter" class="secondary-button" data-i18n="sound_apply" data-i18n-aria-label="sound_apply_filter"></button></div></section>
+    <section class="sound-setting"><div><label for="sound-dre">DRE</label><p data-i18n="sound_dre_note"></p></div><div class="sound-input"><select id="sound-dre"><option value="0" data-i18n="sound_off"></option><option value="1" data-i18n="sound_on"></option></select><button id="sound-apply-dre" class="secondary-button" data-i18n="sound_apply" data-i18n-aria-label="sound_apply_dre"></button></div></section>
+  </div>
+</dialog>
+</body>
+</html>

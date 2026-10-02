@@ -13,6 +13,7 @@ class WireSong(TypedDict, total=False):
     song_album_name: str
     song_file_path: str
     pos_id: int
+    song_duration_time: int
 
 
 class WireState(TypedDict, total=False):
@@ -41,6 +42,8 @@ def validate_playback(value: object) -> WireState:
                 raise ValueError(f'now-playing {key} must be a string')
         if 'pos_id' in song and (type(song['pos_id']) is not int or song['pos_id'] < 0):
             raise ValueError('now-playing pos_id must be a nonnegative integer')
+        if 'song_duration_time' in song and (type(song['song_duration_time']) is not int or song['song_duration_time'] < 0):
+            raise ValueError('song duration must be nonnegative integer milliseconds')
         result['song'] = song
     return cast(WireState, result)
 

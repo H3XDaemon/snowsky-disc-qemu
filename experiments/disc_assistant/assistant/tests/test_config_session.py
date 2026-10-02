@@ -8,8 +8,8 @@ from unittest.mock import Mock, patch
 from experiments.disc_assistant.assistant.config import load
 from experiments.disc_assistant.assistant.__main__ import main
 from experiments.disc_assistant.assistant import session
-from experiments.disc_assistant.library.store import Store
-from experiments.disc_assistant.library.tests.helpers import Catalog, TRACKS
+from library.store import Store
+from library.tests.helpers import Catalog, TRACKS
 
 
 class ConfigSessionTests(unittest.TestCase):

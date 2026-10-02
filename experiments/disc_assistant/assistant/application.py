@@ -19,8 +19,8 @@ from experiments.disc_assistant.assistant.playback import execute as play
 from experiments.disc_assistant.assistant.queue import observe as queue
 from experiments.disc_assistant.assistant.ranking import rank
 from experiments.disc_assistant.assistant.session import sync
-from experiments.disc_assistant.library.search.typesense import Search, create_client, signature
-from experiments.disc_assistant.library.store import Store
+from library.search.typesense import Search, create_client, signature
+from library.store import Store
 from experiments.disc_assistant.assistant.voice.backends import transcribe_file
 
 from experiments.disc_assistant.assistant.console_help import HELP

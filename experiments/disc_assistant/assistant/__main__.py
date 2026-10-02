@@ -17,8 +17,8 @@ from experiments.disc_assistant.assistant.journal import Trace, history_command,
 from experiments.disc_assistant.assistant.responses import Responses, exception_result, validate_locales
 from experiments.disc_assistant.assistant.controls import execute as control
 from experiments.disc_assistant.assistant.queue import observe as observe_queue
-from experiments.disc_assistant.library.store import Store
-from experiments.disc_assistant.library.search.typesense import Search, create_client, signature
+from library.store import Store
+from library.search.typesense import Search, create_client, signature
 from experiments.disc_assistant.assistant.voice.backends import transcribe_file
 
 

@@ -23,7 +23,7 @@ import aiohttp
 import typesense
 
 from controller.fiio_link import Frames, frame
-from experiments.disc_assistant.library.tests.helpers import Catalog, TRACKS
+from library.tests.helpers import Catalog, TRACKS
 
 ROOT = Path(__file__).resolve().parents[2]
 

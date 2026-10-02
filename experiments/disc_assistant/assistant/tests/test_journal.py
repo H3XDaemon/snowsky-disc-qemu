@@ -13,9 +13,9 @@ from experiments.disc_assistant.assistant.config import load
 from experiments.disc_assistant.assistant.console import Application
 from experiments.disc_assistant.assistant.journal import Journal, Trace, JournalWriteError, history_command
 from experiments.disc_assistant.assistant.preferences import language_command
-from experiments.disc_assistant.library.store import Store
-from experiments.disc_assistant.library.search.typesense import signature
-from experiments.disc_assistant.library.tests.helpers import TRACKS
+from library.store import Store
+from library.search.typesense import signature
+from library.tests.helpers import TRACKS
 
 
 class JournalTests(unittest.TestCase):

@@ -42,6 +42,8 @@ def album_matches(state, selected, *, config=None, http=None):
                            max_requests=config.max_requests)
     category = 'artist/album' if selected.get('artist') is not None else 'album'
     filters = {'artist': selected['artist']} if selected.get('artist') is not None else {}
+    if selected.get('genre') is not None:
+        category, filters = 'style/album', {'style': selected['genre']}
     albums = reader.rows(category, **filters)
     if albums != reader.rows(category, **filters):
         raise CatalogChanged('artist albums changed during playback confirmation')
@@ -53,7 +55,7 @@ def album_matches(state, selected, *, config=None, http=None):
 
 def matches(state, selected, rows, *, album_verified=False):
     song = state.get('song')
-    source = PlaybackSource.ALBUM if selected['kind'] == 'album' and selected.get('artist') is None else PlaybackSource.ARTIST_SCOPE
+    source = selected.get('source') if selected and selected.get('source') is not None else PlaybackSource.ALBUM if selected['kind'] == 'album' and selected.get('artist') is None else PlaybackSource.ARTIST_SCOPE
     if state.get('state') != WirePlaybackState.PLAYING or state.get('playerflag') != source or not isinstance(song, dict):
         return False
     artist, title = song.get('song_artist_name'), song.get('song_name')
@@ -63,6 +65,8 @@ def matches(state, selected, rows, *, album_verified=False):
         return False
     if selected['kind'] == 'track':
         return title == selected['title']
+    if selected.get('selected_index') is not None:
+        return title == selected['title'] and artist == selected['target_artist']
     return any(r['author'] == artist and r['name'] == title for r in rows)
 
 

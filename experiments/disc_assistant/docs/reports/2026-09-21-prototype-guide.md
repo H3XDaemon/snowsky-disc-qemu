@@ -22,7 +22,7 @@ Language, catalog/search policy and the request journal remain in this prototype
 
 - [assistant/](../../assistant/README.md): configuration, one-shot CLI and a persistent interactive session.
 - [Disc Assistant Web](../guides/web.md): separate browser UI, text/microphone input and optional Piper replies.
-- [library/](../../library/README.md): complete catalog reads, snapshot storage and search.
+- [library/](../../../../library/README.md): complete catalog reads, snapshot storage and search.
 - [check.py](../../check.py): disposable acceptance with synthetic TCP/HTTP servers and a
   real Typesense container. No firmware or physical device is needed.
 
@@ -528,4 +528,4 @@ Further component improvements are separate tasks.
 Semicolon-separated artist credits now expose individual members for search and
 ranking while retaining literal device selectors. After upgrading, restart the
 console and run `/index`; an existing SQLite snapshot needs no `/sync`. See the
-[Library metadata policy](../../library/README.md#multiple-artist-credits).
+[Library metadata policy](../../../../library/README.md#multiple-artist-credits).

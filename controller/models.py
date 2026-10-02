@@ -93,6 +93,29 @@ class Track:
     album: str | None
     queue_position: int | None
     path: str | None = None
+    duration_ms: int | None = None
+
+    sample_rate_hz: int | None = None
+    bit_depth: int | None = None
+    channels: int | None = None
+    reported_bit_rate: int | None = None
+    genre: str | None = None
+    track_number: int | None = None
+    is_dsd: bool | None = None
+    is_sacd: bool | None = None
+    is_cue: bool | None = None
+    is_m3u: bool | None = None
+
+    @property
+    def identity(self) -> tuple[object, ...]:
+        """Existing selection identity; optional descriptive fields are not selectors."""
+        return (self.title, self.artist, self.album, self.queue_position, self.path, self.duration_ms)
+
+    @property
+    def metadata(self) -> dict[str, Any]:
+        return {key: value for key, value in asdict(self).items()
+                if key not in {'title', 'artist', 'album', 'queue_position', 'path', 'duration_ms'}
+                and value is not None}
 
     @classmethod
     def from_wire(cls, state: object) -> Track | None:
@@ -100,9 +123,20 @@ class Track:
         if not isinstance(song, dict) or not song.get('song_name'):
             return None
         position = song.get('pos_id')
+        genre = song.get('song_style_name')
         return cls(song['song_name'], song.get('song_artist_name'), song.get('song_album_name'),
                    position - 1 if type(position) is int and position > 0 else None,
-                   song.get('song_file_path'))
+                   song.get('song_file_path'), song.get('song_duration_time'),
+                   sample_rate_hz=positive_integer(song.get('song_sample_rate')),
+                   bit_depth=positive_integer(song.get('song_encoding_rate')),
+                   channels=positive_integer(song.get('song_channel')),
+                   reported_bit_rate=positive_integer(song.get('song_bit_rate')),
+                   genre=genre if isinstance(genre, str) else None,
+                   track_number=positive_integer(song.get('song_track')),
+                   is_dsd=optional_boolean(song.get('is_dsd')),
+                   is_sacd=optional_boolean(song.get('is_sacd')),
+                   is_cue=optional_boolean(song.get('is_cue')),
+                   is_m3u=optional_boolean(song.get('is_m3u')))
 
 
 @dataclass(frozen=True)
@@ -241,3 +275,12 @@ def source_from_wire(value: object) -> PlaybackSource | None:
         return PlaybackSource(value)
     except ValueError:
         return None
+
+
+def positive_integer(value: object) -> int | None:
+    """Optional metadata must not coerce booleans, text or firmware sentinels."""
+    return value if type(value) is int and 0 < value <= 2147483647 else None
+
+
+def optional_boolean(value: object) -> bool | None:
+    return value if type(value) is bool else None

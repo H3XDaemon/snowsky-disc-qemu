@@ -12,6 +12,7 @@ Analysis methods, diagnostic tools and attributed evidence. Start with the curre
 - [Preserved V2.40 analysis notes](reports/2026-09-21-v240-analysis-notes.md)
 - [diskOS on V2.40 — historical findings](reports/diskos.md)
 - [FiiO Control application evidence](reports/fiio-control-app.md)
+- [FiiO Control 4.6.0: device profiles and startup synchronization](reports/2026-09-22-fiio-control-profiles.md)
 - [DISC and Android M21: related FiiO Link dialects](reports/m21-comparison.md)
 - [DISC PEQ investigation (V2.57)](reports/peq.md)
 - [SACD ISO metadata and selection (V2.57)](reports/sacd.md)

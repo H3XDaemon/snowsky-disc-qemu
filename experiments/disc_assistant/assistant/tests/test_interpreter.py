@@ -17,9 +17,9 @@ from experiments.disc_assistant.assistant.nlu.interpreter import (
 from experiments.disc_assistant.assistant.nlu.intents import Intent, ControlIntent, LanguageIntent
 from experiments.disc_assistant.assistant.journal import Trace, history_command
 from experiments.disc_assistant.assistant.providers import ProviderInfo, ProviderUnavailable, InvalidProviderResult
-from experiments.disc_assistant.library.tests.helpers import TRACKS
-from experiments.disc_assistant.library.store import Store
-from experiments.disc_assistant.library.search.typesense import signature
+from library.tests.helpers import TRACKS
+from library.store import Store
+from library.search.typesense import signature
 
 
 class InterpreterTests(unittest.IsolatedAsyncioTestCase):

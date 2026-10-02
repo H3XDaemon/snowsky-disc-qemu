@@ -28,6 +28,11 @@ with JPEG start/end markers; only response metadata was retained, not the artwor
 This does not establish a byte-for-byte hash of the uploaded physical file, M21 compatibility,
 or every app operation. Private raw responses remain in ignored `work/`.
 
+A [2026-09-23 metadata and lyrics audit](../../research/docs/reports/2026-09-23-library-metadata.md)
+rechecked the fingerprinted V2.57 route table and dispatcher. It separates current
+artwork/audio metadata, local lyric processing and the absence of a general
+file-download handler on this HTTP service.
+
 ## Request conventions
 
 The user's iOS 4.6.0 HAR additionally records `GET /localdir/tmp/` on physical DISC:

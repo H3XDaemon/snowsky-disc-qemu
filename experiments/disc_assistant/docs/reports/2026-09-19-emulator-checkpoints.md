@@ -16,7 +16,7 @@ The runner exits nonzero and preserves these cases rather than marking them pass
 Manifest v3 added six regression cases for the second credited artist,
 artist/title without a dash and fuzzy title retrieval. These are examined regression
 cases, not an independent holdout. Multi-artist matching is described in the
-[Library metadata policy](../../library/README.md#multiple-artist-credits).
+[Library metadata policy](../../../../library/README.md#multiple-artist-credits).
 Screenshots of playing and paused fixtures were manually inspected on the stock
 Now-playing screen; the runner makes no automatic visual-acceptance claim.
 Firmware-free infrastructure verification passed 339 Python and 37 JavaScript tests.

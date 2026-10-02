@@ -57,7 +57,7 @@ Do not infer automatic storage pruning from `/history prune`.
 
 A catalog is an observation, not an atomic device revision. Track IDs are
 snapshot-local, and CUE/duplicate identities can remain ambiguous. Use the
-[Library contract](../../library/README.md) and
+[Library contract](../../../../library/README.md) and
 [playback guards](../architecture/playback.md), rather than persisting IDs as
 replayable commands. Only synchronize an idle device; an already-running scan
 may have begun before connection and escaped observation.

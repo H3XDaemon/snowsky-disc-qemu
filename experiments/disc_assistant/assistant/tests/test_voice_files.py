@@ -18,9 +18,9 @@ from experiments.disc_assistant.assistant.providers import ProviderInfo
 from experiments.disc_assistant.assistant.speech import Audio, InvalidSpeech, NoSpeech, SpeechUnavailable, Transcription
 from experiments.disc_assistant.assistant.voice import backends, samples
 from experiments.disc_assistant.assistant.voice.files import load_audio, wav_audio
-from experiments.disc_assistant.library.store import Store
-from experiments.disc_assistant.library.search.typesense import signature
-from experiments.disc_assistant.library.tests.helpers import TRACKS
+from library.store import Store
+from library.search.typesense import signature
+from library.tests.helpers import TRACKS
 
 
 def wav(*, rate=16000, width=2, channels=1, frames=1600, silent=False):

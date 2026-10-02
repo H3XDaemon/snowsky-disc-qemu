@@ -52,7 +52,7 @@ class AlbumPlaybackTests(unittest.TestCase):
     setUp = test_playback.PlaybackTests.setUp
     def test_album_changed_membership_blocks_write(self):
         from experiments.disc_assistant.assistant.playback import fresh_selection
-        from experiments.disc_assistant.library.catalog import CatalogChanged
+        from library.catalog import CatalogChanged
         selected = dict(kind='album', album='Meteora', artist=None)
         category, filters, rows, _, _ = fresh_selection(self.config, self.store, self.head['generation'], selected, self.http)
         self.assertEqual((category, filters), ('album/song', {'album': 'Meteora'}))

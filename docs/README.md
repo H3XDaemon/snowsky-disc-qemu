@@ -7,9 +7,11 @@ shared protocol, architecture and development documentation.
 | --- | --- | --- |
 | Emulator | [Current status](../emulator/docs/status.md) | [Boot, audio, controls, network and settings](../emulator/docs/README.md) |
 | Viewer | [Usage](../viewer/docs/usage.md) | [Browser interaction](../viewer/docs/README.md) |
+| Library | [Shared catalog and storage](../library/README.md) | Offline projections, snapshot identity and optional search |
 | Controller | [Package setup](../controller/README.md) | [Session API, discovery and bridges](../controller/docs/README.md) |
 | Firmware | [Preparation](../firmware/README.md) | [Profiles, porting and version reports](../firmware/docs/README.md) |
 | Disc Assistant | [Quick command guide](../experiments/disc_assistant/docs/guides/quick-guide.md) | [Guides, contracts, evaluation and reports](../experiments/disc_assistant/docs/README.md) |
+| DISC Web | [Run the music remote](../experiments/disc_web/README.md) | [Architecture](../experiments/disc_web/docs/architecture.md), [status](../experiments/disc_web/docs/status.md) |
 | Browser experiment | [Project setup](../experiments/browser/README.md) | [Results and limitations](../experiments/browser/docs/README.md) |
 | diskOS preview | [Historical project](../experiments/diskos/README.md) | [Preserved preview evidence](../experiments/diskos/docs/README.md) |
 | Firmware research | [Current checkpoint and pause conditions](../research/docs/status.md) | [Methods, diagnostics and investigation reports](../research/docs/README.md) |

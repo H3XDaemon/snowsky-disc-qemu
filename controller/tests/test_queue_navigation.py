@@ -5,7 +5,8 @@ import unittest
 from unittest.mock import Mock, patch
 
 from controller.fiio_link import Client, frame
-from controller.queue import previous_in_queue
+from controller.queue import previous_in_queue, select_queue_index
+from controller.models import QueueItem
 
 
 class QueueNavigationTests(unittest.TestCase):
@@ -31,6 +32,27 @@ class QueueNavigationTests(unittest.TestCase):
     def run_navigation(self, observations):
         with patch('controller.queue.snapshot', side_effect=observations), patch('time.sleep'):
             return previous_in_queue(self.config, self.client, Mock())
+
+    def test_explicit_selection_checks_displayed_queue_before_write(self):
+        expected = tuple(QueueItem(r['pos'], r['name'], r['author']) for r in self.before['items'])
+        with patch('controller.queue.snapshot', side_effect=[self.before, self.before, self.after]):
+            result = select_queue_index(self.config, self.client, Mock(), 0, expected=expected)
+        self.assertEqual(result['status'], 'confirmed')
+        self.client.socket.sendall.assert_called_once_with(frame('0100', '00000000'))
+
+    def test_explicit_selection_rejects_stale_same_length_source(self):
+        expected = tuple(QueueItem(r['pos'], 'Other', r['author']) for r in self.before['items'])
+        with patch('controller.queue.snapshot', return_value=self.before):
+            result = select_queue_index(self.config, self.client, Mock(), 0, expected=expected)
+        self.assertEqual(result['status'], 'not_sent')
+        self.client.socket.sendall.assert_not_called()
+
+    def test_explicit_selection_rejects_boolean_and_invalid_bounds(self):
+        for index in (True, -1, 65536, '0', 3):
+            with patch('controller.queue.snapshot', return_value=self.before):
+                result = select_queue_index(self.config, self.client, Mock(), index)
+            self.assertEqual(result['status'], 'not_sent')
+        self.client.socket.sendall.assert_not_called()
 
     def test_one_explicit_selection_confirms_exact_predecessor(self):
         result = self.run_navigation([self.before, self.before, self.after])

@@ -4,7 +4,7 @@ from contextlib import nullcontext
 from controller.compatibility import Capability, require_client
 from controller.fiio_http import HTTPClient
 from controller.fiio_link import Client
-from experiments.disc_assistant.library.catalog import CatalogReader, CatalogChanged
+from library.catalog import CatalogReader, CatalogChanged
 
 
 from controller.events import check_events

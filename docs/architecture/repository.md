@@ -19,10 +19,12 @@ their code; shared protocol and development contracts have repository-wide owner
 | `emulator/scripts/`, `emulator/shims/`, `emulator/runtime/` | Guest setup, boot/stop, SD/network stubs, physical input, framebuffer and PCM | Shared `firmware.profile`; native tools from `emulator/docker/` |
 | `viewer/server.py`, `viewer/static/` | HTTP/SSE presentation, browser input/audio, shared device CSS | Emulator runtime adapter; no controller transport |
 | `controller/` | Physical-device TCP/HTTP/WS clients, shared session/state/control API, discovery, optional bridges and network diagnostics | Python standard library; `aiohttp` for WS client/bridge; no emulator, firmware, research or experiments imports |
+| `library/` | Catalog observations, SQLite snapshots, offline projections and optional search | Controller catalog/transport contracts; optional Typesense; no application imports |
 | `firmware/profile.py`, `firmware/v*.json`, `firmware/tools/` | Reviewed profiles/fingerprints, acquisition, extraction, OTA and inventory tools | Native extraction tools where needed |
 | `research/ghidra/`, `research/diagnostics/` | Ghidra, ELF tables, GDB and process-memory inspection | Firmware profiles; emulator process helpers for live memory probes |
 | `experiments/browser/` | Experimental TinyEMU/WASM runtime, local bundle builder and browser UI | Reviewed firmware preparation/shims; pinned public TinyEMU, Linux and QEMU inputs; separate build image |
-| `experiments/disc_assistant/` | Experimental text/voice command flow, console/web adapters, catalog snapshots/search, locale/response policy and request history | Shared Controller API; SQLite/Typesense; optional Whisper Server and Piper; separate launcher/services |
+| `experiments/disc_assistant/` | Experimental text/voice command flow, console/web adapters, ranking, locale/response policy and request history | Shared Controller and Library APIs; SQLite/Typesense; optional Whisper Server and Piper; separate launcher/services |
+| `experiments/disc_web/` | Experimental web music remote, library presentation, local HTTP application and isolated demo | Shared Controller and Library APIs; Python standard library and local browser assets; independent launcher |
 | `experiments/diskos/` | Historical, unsupported source-built diskOS UI preview and isolated launcher | Pinned upstream source; legacy V2.40 runtime and emulator helpers; no supported-profile promotion |
 | `tests/integration/`, `tests/fixtures/` | Cross-component acceptance and generated media | The components under test |
 | `ci/` | Test discovery, disposable Compose orchestration and cleanup | Test implementations under `tests/` |

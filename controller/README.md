@@ -28,6 +28,11 @@ typed `CommandResult`. Volume is 0..120; relative adjustments clamp at the limit
 Unknown/unavailable observations, unsent operations and uncertain mutations are
 distinct. Never retry an uncertain result automatically.
 
+`sound_settings()` observes gain, channel balance, DAC filter and DRE.
+`set_sound_setting(name, value, expected=current_value)` changes one reviewed
+parameter with fresh preflight and readback. Both accept `expected_generation`
+for displayed-connection guards; see the [sound API](docs/api.md#sound-settings).
+
 `DiscSession` serializes commands and owns one connection. Explicit disconnect
 prevents reconnection; unexpected disconnect permits observation recovery but
 never mutation replay. Only explicitly reviewed firmware capabilities are

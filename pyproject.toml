@@ -13,7 +13,7 @@ follow_imports = "silent"
 files = [
   "controller/models.py", "controller/wire.py", "controller/contracts.py",
   "controller/compatibility.py", "controller/operations.py", "controller/current.py",
-  "controller/controls.py", "controller/session.py", "controller/link_commands.py",
+  "controller/controls.py", "controller/session.py", "controller/link_commands.py", "controller/sound.py",
   "ci/controller_types.py",
   "experiments/disc_assistant/assistant/controller_results.py",
 ]
@@ -22,5 +22,5 @@ files = [
 # helpers. Their own signatures and bodies are checked; new public results and
 # wire decoders use strict mode without this exception.
 [[tool.mypy.overrides]]
-module = ["controller.session", "controller.controls", "controller.link_commands"]
+module = ["controller.session", "controller.controls", "controller.link_commands", "controller.sound"]
 disallow_untyped_calls = false

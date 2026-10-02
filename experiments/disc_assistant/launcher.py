@@ -173,7 +173,7 @@ def main(argv=None):
                 install(config_path, model=setup_args.whisper_model)
             return 0
         if args.command in ('test', 'check'):
-            module = (['unittest', 'discover', '-s', 'experiments/disc_assistant', '-t', '.', '-v']
+            module = (['ci.assistant_unit']
                       if args.command == 'test' else ['experiments.disc_assistant.check'])
             return subprocess.run([sys.executable, '-B', '-m', *module], cwd=ROOT).returncode
         if args.command == 'down':

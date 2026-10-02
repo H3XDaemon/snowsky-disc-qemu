@@ -15,11 +15,11 @@ from experiments.disc_assistant.assistant.nlu.languages import load_languages
 from experiments.disc_assistant.assistant.ranking import rank
 from experiments.disc_assistant.assistant.resolver import infer
 from experiments.disc_assistant.assistant.voice.catalog_evaluation import selection_matches
-from experiments.disc_assistant.library.catalog import Track
-from experiments.disc_assistant.library.artists import artist_names
-from experiments.disc_assistant.library.store import Store
-from experiments.disc_assistant.library.search.typesense import Search, create_client, FIELDS
-from experiments.disc_assistant.library.transliteration import fold, projected_aliases
+from library.catalog import Track
+from library.artists import artist_names
+from library.store import Store
+from library.search.typesense import Search, create_client, FIELDS
+from library.transliteration import fold, projected_aliases
 from experiments.disc_assistant.assistant.nlu.evaluation.encoder import digest
 
 ROOT = Path(__file__).resolve().parents[5]

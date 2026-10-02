@@ -11,8 +11,8 @@ from controller.fiio_library import artist_command, album_command
 from controller.fiio_http import HTTPClient
 from experiments.disc_assistant.assistant.device import (
     PlaybackClient, ObservedSocket, device_lock, validate_scan_events)
-from experiments.disc_assistant.library.catalog import CatalogReader, CatalogChanged
-from experiments.disc_assistant.library.store import StaleSnapshot
+from library.catalog import CatalogReader, CatalogChanged
+from library.store import StaleSnapshot
 from experiments.disc_assistant.assistant.queue import snapshot as queue_snapshot, ensure_continuous
 
 

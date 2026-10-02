@@ -9,8 +9,8 @@ from experiments.disc_assistant.assistant.local_service import endpoint
 from experiments.disc_assistant.assistant.voice.resident import WhisperServer
 from experiments.disc_assistant.assistant.voice.vocabulary import catalog_vocabulary, prompt
 from experiments.disc_assistant.assistant.speech import Audio, SpeechContext, InvalidSpeech, SpeechUnavailable
-from experiments.disc_assistant.library.store import Store
-from experiments.disc_assistant.library.tests.helpers import TRACKS
+from library.store import Store
+from library.tests.helpers import TRACKS
 
 
 class ResidentTests(unittest.IsolatedAsyncioTestCase):

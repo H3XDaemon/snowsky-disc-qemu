@@ -1,8 +1,16 @@
 # Disc Assistant status
 
-Current on 2026-09-21. The Assistant is an active experimental application with
+Current on 2026-09-22. The Assistant is an active experimental application with
 an accepted **software MVP against stock V2.57**. Start with the
 [command quick guide](guides/quick-guide.md) or [setup](guides/setup.md).
+
+## Shared Library extraction — 2026-09-22
+
+Catalog/store/search modules now live in root [`library/`](../../../library/README.md),
+shared with DISC Web. Assistant imports and its test launcher use the shared
+component. SQLite schema, stored paths, snapshot IDs, search signatures and the
+accepted MVP evidence are unchanged. No automatic data-directory migration or
+shared connection daemon is introduced.
 
 ## Implemented behavior
 

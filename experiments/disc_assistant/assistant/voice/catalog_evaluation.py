@@ -7,8 +7,8 @@ import time
 from experiments.disc_assistant.assistant.nlu.intents import Intent
 from experiments.disc_assistant.assistant.ranking import rank
 from experiments.disc_assistant.assistant.nlu.languages import normalized
-from experiments.disc_assistant.library.search.typesense import Search, create_client
-from experiments.disc_assistant.library.store import Store, StaleSnapshot
+from library.search.typesense import Search, create_client
+from library.store import Store, StaleSnapshot
 
 
 def music_case(case):

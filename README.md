@@ -23,7 +23,7 @@ without a physical device.
 
 *Actual V2.57 emulator captures ([capture details](docs/images/README.md)). The browser viewer adds the CSS device and interactive controls shown below.*
 
-Three core components share one repository, alongside the independent experiments below:
+Core components share one repository, alongside the independent experiments below:
 
 - **Emulator** — runs the original MIPS firmware in Docker, provides the device interfaces
   it needs, and makes its UI, storage, audio and local protocol available for testing.
@@ -32,6 +32,8 @@ Three core components share one repository, alongside the independent experiment
 - **Controller** — Python clients for playback, library and settings over the
   player's network APIs. Works with a physical DISC or the emulator; direct
   device control needs no Docker or firmware files.
+- **Library** — shared catalog snapshots, SQLite storage and optional search for
+  DISC Web and Assistant; see [Library](library/README.md).
 
 ## Emulator
 

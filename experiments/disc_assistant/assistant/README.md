@@ -31,7 +31,7 @@ See the [prototype guide](../README.md) for setup, commands and acceptance, and 
 | `voice/` | Bounded WAV input, Whisper CLI/server STT, Piper reply delivery and macOS say sample TTS, synthetic corpora and interpretation/catalog-selection evaluation |
 | `tests/` | Configuration, CLI and session tests |
 
-The application asks [library](../library/README.md) for persistence/search and
+The application asks [library](../../../library/README.md) for persistence/search and
 uses the existing [controller](../../../controller/) public APIs. No emulator or
 viewer imports. Importing modules creates no storage, connections or microphone.
 Use `experiments/disc_assistant/run.sh` for setup, local Typesense and CLI commands.

@@ -15,18 +15,20 @@ from controller.link_commands import ReviewedCommands
 from controller.wire import playback_snapshot
 from controller.device import MutationGuard, ObservedSocket, MutationPacer
 from controller.events import validate_scan_events, merge_snapshot
-from controller.models import DeviceConfig, DeviceSnapshot, CommandResult, PlayMode
+from controller.models import DeviceConfig, DeviceSnapshot, CommandResult, PlayMode, QueueItem, Track, PlaybackSource
 from controller.contracts import ControlAction, CurrentAction
 from typing import Any, Callable, Iterator, Self
 from types import TracebackType
 from contextlib import AbstractContextManager
 from controller.wire import WireState
+from controller.sound import SoundCommands, SOUND_READ_TAGS, SOUND_WRITE_TAGS
 
 
 class LiveSocket(ObservedSocket):
     def sendall(self, data: bytes) -> None:
-        mutation = data[:4] in (b'0100', b'0101', b'0102', b'0201', b'0104', b'0502')
-        if not mutation and data[:4] not in (b'0599', b'0501', b'0105', b'0202'):
+        mutation = data[:4] in (b'0100', b'0101', b'0102', b'0103', b'0201', b'0104', b'0502')
+        mutation = mutation or data == frame('0622', '0000') or data[:4] in SOUND_WRITE_TAGS
+        if not mutation and data[:4] not in (b'0599', b'0501', b'0105', b'0202', *SOUND_READ_TAGS):
             raise ValueError('command is outside the reviewed persistent-session surface')
         if self.session.closed.is_set():
             raise ConnectionError('session ended; request was not replayed')
@@ -37,7 +39,7 @@ class LiveSocket(ObservedSocket):
             raise
 
 
-class LiveClient(MutationGuard, ReviewedCommands):
+class LiveClient(MutationGuard, ReviewedCommands, SoundCommands):
     """Only _receive touches recv; request callers wait on a condition variable."""
     def __init__(self, host: str, port: int, timeout: float) -> None:
         raw = socket.create_connection((host, port), timeout)
@@ -293,11 +295,11 @@ class DiscSession:
         """Immutable normalized observations; no network request or device mutation."""
         return DeviceSnapshot.from_status(self.status())
 
-    def _perform(self, action: str, callback: Callable[[LiveClient], Any]) -> CommandResult:
+    def _perform(self, action: str, callback: Callable[[LiveClient], Any], *, expected_generation: int | None = None) -> CommandResult:
         client = None
         operation_id = uuid4().hex
         try:
-            with self.operation() as client:
+            with self.operation(expected_generation=expected_generation) as client:
                 result = callback(client)
                 if isinstance(result, CommandResult):
                     from dataclasses import replace
@@ -338,6 +340,20 @@ class DiscSession:
     def adjust_volume(self, delta: int) -> CommandResult:
         return self._current('volume', delta=delta)
 
+    def sound_settings(self, *, expected_generation: int | None = None) -> CommandResult:
+        """Fresh reviewed sound values. Unknown firmware has no inherited support."""
+        from controller.sound import read_settings
+        return self._perform('sound_settings', read_settings, expected_generation=expected_generation)
+
+    def set_sound_setting(self, name: str, value: int, *, expected: int,
+                          expected_generation: int | None = None) -> CommandResult:
+        """One validated setting change, fresh displayed-value check and readback."""
+        from controller.sound import validate, change_setting
+        validate(name, value)
+        validate(name, expected)
+        return self._perform('sound_setting', lambda client: change_setting(
+            client, name, value, expected, self.config.timeout), expected_generation=expected_generation)
+
     def _current(self, action: CurrentAction, *, value: int | None = None,
                  delta: int | None = None) -> CommandResult:
         from controller.operations import current_track
@@ -377,11 +393,12 @@ class DiscSession:
             return {'status': 'observed', 'queue': snapshot(self.config, client, http)}
         return self._perform('queue', read)
 
-    def play_artist(self, artist: str, *, album: str | None = None, index: int | None = None) -> CommandResult:
+    def play_artist(self, artist: str, *, album: str | None = None, index: int | None = None,
+                    expected: tuple[QueueItem, ...] | None = None) -> CommandResult:
         """Fresh named artist/album context or zero-based track; preserve play mode."""
         from controller.fiio_http import HTTPClient
         from controller.fiio_library import artist_command
-        from controller.catalog import CatalogReader, CatalogChanged
+        from controller.catalog import CatalogReader, CatalogChanged, verify_expected
         from controller.playback import GuardedHTTP, verify_playing
         from controller.queue import snapshot
         def select(client: LiveClient) -> dict[str, Any]:
@@ -395,6 +412,7 @@ class DiscSession:
             rows = reader.rows(category, **filters)
             if not rows or rows != reader.rows(category, **filters):
                 raise CatalogChanged('playback source is empty or changing')
+            verify_expected(rows, expected)
             position = 0 if index is None else index
             if position >= len(rows):
                 raise ValueError('position outside current source')
@@ -413,15 +431,16 @@ class DiscSession:
             return result
         return self._perform('play_artist', select)
 
-    def play_album(self, album: str) -> CommandResult:
+    def play_album(self, album: str, *, index: int | None = None,
+                   expected: tuple[QueueItem, ...] | None = None) -> CommandResult:
         """Play all artists in a named native album; verify its complete queue."""
         from controller.fiio_http import HTTPClient
         from controller.fiio_library import album_command
-        from controller.catalog import CatalogReader, CatalogChanged
+        from controller.catalog import CatalogReader, CatalogChanged, verify_expected
         from controller.playback import GuardedHTTP, verify_playing
         from controller.queue import snapshot
         def select(client: LiveClient) -> dict[str, Any]:
-            album_command(album)
+            album_command(album, index)
             client.wait_for_mutation()
             http = HTTPClient(self.config.host, self.config.http_port, self.config.timeout)
             reader = CatalogReader(http, page_size=self.config.page_size, max_tracks=self.config.max_tracks,
@@ -429,22 +448,104 @@ class DiscSession:
             rows = reader.rows('album/song', album=album)
             if not rows or rows != reader.rows('album/song', album=album):
                 raise CatalogChanged('album source is empty or changing')
-            selected = {'kind': 'album', 'artist': None, 'album': album}
+            verify_expected(rows, expected)
+            position = 0 if index is None else index
+            if position >= len(rows):
+                raise ValueError('position outside current album')
+            selected: dict[str, Any] = {'kind': 'album', 'artist': None, 'album': album}
+            if index is not None:
+                selected.update(selected_index=index, title=rows[index]['name'], target_artist=rows[index]['author'])
             client.scan_guard()
-            client.play_album(album, http=GuardedHTTP(http, 'album/song', {'album': album}, rows, 0, client))
+            guard = GuardedHTTP(http, 'album/song', {'album': album}, rows, position, client)
+            if index is None:
+                client.play_album(album, http=guard)
+            else:
+                client.play_album(album, index, http=guard)
             state = verify_playing(client, selected, rows, self.config.timeout, config=self.config, http=http)
             result = {'status': 'playing' if state else 'uncertain', 'mutation_attempted': True, 'state': state}
             if state:
-                result['queue'] = snapshot(self.config, client, http, expected=rows, selected=selected)
+                result['queue'] = snapshot(self.config, client, http, expected=rows, selected=selected,
+                                           selected_position=index)
             else:
                 result['reason'] = 'album playback not confirmed; selection was not retried'
             return result
         return self._perform('play_album', select)
 
+    def play_genre(self, genre: str, *, album: str | None = None, index: int | None = None,
+                   expected: tuple[QueueItem, ...] | None = None) -> CommandResult:
+        """Select only the displayed genre/album membership after fresh checks."""
+        from controller.genre_playback import select
+        return self._perform('play_genre', lambda client: select(self.config, client, genre,
+            album=album, index=index, expected=expected))
+
+    def play_queue_index(self, index: int, *, expected: tuple[QueueItem, ...] | None = None) -> CommandResult:
+        """Select a fresh queue row; optional expected rows pin the displayed source."""
+        from controller.fiio_http import HTTPClient
+        from controller.queue import select_queue_index
+        return self._perform('play_queue_index', lambda client: select_queue_index(self.config, client,
+            HTTPClient(self.config.host, self.config.http_port, self.config.timeout), index, expected=expected))
+
+    def play_playlist(self, name: str, *, index: int | None = None,
+                      expected: tuple[QueueItem, ...] | None = None) -> CommandResult:
+        from controller.source_playback import select
+        return self._perform('play_playlist', lambda client: select(self.config, client,
+            'playlist', index=index, name=name, expected=expected))
+
+    def play_catalog_track(self, index: int, *, favorites: bool = False,
+                           expected: tuple[QueueItem, ...] | None = None) -> CommandResult:
+        from controller.source_playback import select
+        if type(favorites) is not bool:
+            raise ValueError('favorites must be a boolean')
+        return self._perform('play_catalog_track', lambda client: select(self.config, client,
+            'favorites' if favorites else 'tracks', index=index, expected=expected))
+
+    def seek(self, position_ms: int, *, expected: Track, source: PlaybackSource) -> CommandResult:
+        from controller.seeking import seek
+        return self._perform('seek', lambda client: seek(client, position_ms,
+            expected=expected, source=source, timeout=self.config.timeout))
+
+    def create_playlist(self, name: str) -> CommandResult:
+        return self._playlist_edit('create', name)
+
+    def upload_audio(self, source: str, destination: str, *,
+                     on_progress: Callable[[int, int], None] | None = None,
+                     expected_generation: int | None = None) -> CommandResult:
+        """Stream one new audio file; verify listing and completed byte count."""
+        from controller.importing import upload
+        return self._perform('upload_audio', lambda client: upload(
+            self.config, client, source, destination, on_progress=on_progress), expected_generation=expected_generation)
+
+    def scan_library(self, *, timeout: float = 300,
+                     on_progress: Callable[[int], None] | None = None,
+                     expected_generation: int | None = None) -> CommandResult:
+        """Start once and observe the scan lifecycle without interleaved queries."""
+        from controller.importing import scan
+        return self._perform('scan_library', lambda client: scan(
+            client, timeout=timeout, on_progress=on_progress), expected_generation=expected_generation)
+
+    def rename_playlist(self, name: str, new_name: str) -> CommandResult:
+        return self._playlist_edit('rename', name, new_name=new_name)
+
+    def add_playlist_track(self, name: str, index: int, *, expected: tuple[QueueItem, ...],
+                           album: str | None = None) -> CommandResult:
+        return self._playlist_edit('add', name, index=index, expected=expected,
+                                   category='album/song' if album is not None else 'all/song', album=album)
+
+    def remove_playlist_track(self, name: str, index: int, *, expected: tuple[QueueItem, ...]) -> CommandResult:
+        return self._playlist_edit('remove', name, index=index, expected=expected)
+
+    def _playlist_edit(self, action: str, name: str, **kwargs: Any) -> CommandResult:
+        from controller.fiio_http import HTTPClient
+        from controller.playlist_operations import edit
+        return self._perform('playlist_' + action, lambda client: edit(self.config, client,
+            HTTPClient(self.config.host, self.config.http_port, self.config.timeout), action, name, **kwargs))
+
     @contextmanager
-    def operation(self) -> Iterator[LiveClient]:
+    def operation(self, *, expected_generation: int | None = None) -> Iterator[LiveClient]:
         with self.guard:
             requested_generation = self.generation
+            if expected_generation is not None and (type(expected_generation) is not int or expected_generation != requested_generation):
+                raise ConnectionError('displayed connection expired; no command was sent')
             if self.connection != 'ready' or self.client is None or self.client.closed.is_set():
                 raise ConnectionError('device is not ready; command was not queued or replayed')
         with self.operations:

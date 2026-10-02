@@ -2,6 +2,7 @@
 import time
 from controller.fiio_link import Client, frame
 from controller.events import validate_scan_events
+from controller.sound import SOUND_WRITE_TAGS
 
 
 class MutationPacer:
@@ -42,8 +43,8 @@ class ObservedSocket:
         return getattr(self.socket, name)
 
     def sendall(self, data):
-        if data[:4] in (b'0100', b'0101', b'0102', b'0201', b'0104', b'0502'):
-            kind = {b'0102': 'mode', b'0104': 'favorite', b'0502': 'volume'}.get(data[:4], 'selection')
+        if data[:4] in (b'0100', b'0101', b'0102', b'0103', b'0201', b'0104', b'0502', b'0622', *SOUND_WRITE_TAGS):
+            kind = 'sound' if data[:4] in SOUND_WRITE_TAGS else {b'0102': 'mode', b'0104': 'favorite', b'0502': 'volume'}.get(data[:4], 'selection')
             if self.session.mutation_phase != kind:
                 raise RuntimeError('unexpected mutation in the current phase')
             if self.session.mutation_phase in self.session.attempted_phases:
@@ -64,7 +65,7 @@ class MutationGuard:
         self.pacer.wait()
 
     def begin_phase(self, name: str) -> None:
-        if (name not in ('mode', 'selection', 'favorite', 'volume') or name in self.attempted_phases
+        if (name not in ('mode', 'selection', 'favorite', 'volume', 'sound') or name in self.attempted_phases
                 or (name == 'mode' and self.attempted_phases)):
             raise RuntimeError('mutation phase cannot be replayed')
         self.mutation_phase = name

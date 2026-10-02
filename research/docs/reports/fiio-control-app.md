@@ -547,8 +547,12 @@ honors the phone's HTTP proxy configuration.
 
 Selected binaries, partial decompilation and inventory remain in ignored
 `work/fiio-control-460/`. No APK, app assets or decompiled sources belong in Git.
-The [Blutter project](https://github.com/worawit/blutter) was inspected as a route to
-Dart AOT function/object-pool analysis; it has not yet been built or run here.
+At this checkpoint, the [Blutter project](https://github.com/worawit/blutter) had
+only been inspected as a route to Dart AOT function/object-pool analysis.
+The [2026-09-22 follow-up](2026-09-22-fiio-control-profiles.md) successfully ran it
+against the same APK and recovered the bundled product/function database and
+startup refresh call sites. Earlier string-only findings above retain their
+original evidence limits.
 
 ## iOS 4.6.0 observed HTTP (2026-09-15)
 

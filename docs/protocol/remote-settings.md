@@ -6,6 +6,11 @@ configuration. This establishes the control path, not physical DAC/DSP performan
 or USB/AirPlay/Bluetooth audio compatibility. Owner-supplied physical captures
 are attributed separately below; no commands were replayed to a physical device.
 
+The persistent `DiscSession` facade now exposes the narrow gain/balance/filter/DRE
+subset with fresh displayed-value checks, paced single writes and bounded readback.
+See the [sound settings API](../../controller/docs/api.md#sound-settings).
+This does not promote the remaining raw settings or PEQ into the session facade.
+
 ## Tested settings
 
 `client.device_setting(name)` reads and `client.set_device_setting(name, value)`

@@ -2,7 +2,7 @@
 import hashlib
 import json
 import sqlite3
-from experiments.disc_assistant.library.artists import artist_names
+from library.artists import artist_names
 
 
 def catalog_vocabulary(config):

@@ -4,12 +4,12 @@ from dataclasses import asdict
 
 from experiments.disc_assistant.assistant.nlu.intents import Intent, AlbumIntent, normalized, names
 from experiments.disc_assistant.assistant.nlu.languages import load_languages
-from experiments.disc_assistant.library.store import StaleSnapshot
-from experiments.disc_assistant.library.versions import with_query_markers
+from library.store import StaleSnapshot
+from library.versions import with_query_markers
 from experiments.disc_assistant.assistant.resolver import infer
 from experiments.disc_assistant.assistant.matching import similarity, strong_match, artist_similarity
-from experiments.disc_assistant.library.transliteration import fold
-from experiments.disc_assistant.library.artists import artist_names
+from library.transliteration import fold
+from library.artists import artist_names
 
 
 def versions(value, rules):

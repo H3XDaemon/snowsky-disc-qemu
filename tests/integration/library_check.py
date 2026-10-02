@@ -230,6 +230,8 @@ async def main():
             await scan(client, memory)
     for transport in ('tcp', 'ws'):
         await exercise(transport)
+    from tests.integration.genre_session_check import check as check_genre_session
+    await asyncio.to_thread(check_genre_session)
     for path, digest in hashes.items():
         assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
         path.unlink()

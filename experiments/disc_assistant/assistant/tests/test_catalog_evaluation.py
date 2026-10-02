@@ -7,9 +7,9 @@ from experiments.disc_assistant.assistant.voice.catalog_evaluation import Catalo
 from experiments.disc_assistant.assistant.tests import test_voice_files as fixtures
 from experiments.disc_assistant.assistant.speech import Transcription
 from experiments.disc_assistant.assistant.voice import catalog_evaluation
-from experiments.disc_assistant.library.store import Store, StaleSnapshot
-from experiments.disc_assistant.library.search.typesense import signature
-from experiments.disc_assistant.library.tests.helpers import TRACKS
+from library.store import Store, StaleSnapshot
+from library.search.typesense import signature
+from library.tests.helpers import TRACKS
 
 
 class CatalogVoiceTests(unittest.TestCase):

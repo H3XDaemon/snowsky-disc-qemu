@@ -31,7 +31,7 @@ device connection; close FiiO Control before connecting.
 
 - [`assistant/`](assistant/README.md): common request flow, NLU, CLI/web adapters,
   language/response policy and request journal.
-- [`library/`](library/README.md): catalog observations, SQLite snapshots and search.
+- [`library/`](../../library/README.md): catalog observations, SQLite snapshots and search.
 - [`evaluation/`](evaluation/): offline speech/search comparisons and curated acceptance.
   NLU-specific tools stay under `assistant/nlu/evaluation/`.
 

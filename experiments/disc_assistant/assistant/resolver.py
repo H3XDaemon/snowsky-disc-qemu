@@ -1,8 +1,8 @@
 """Resolve interpreted music references against catalog metadata; no input parsing."""
 from experiments.disc_assistant.assistant.nlu.intents import Intent, names, normalized
 from experiments.disc_assistant.assistant.matching import similarity, exact_name
-from experiments.disc_assistant.library.transliteration import fold
-from experiments.disc_assistant.library.artists import artist_names
+from library.transliteration import fold
+from library.artists import artist_names
 
 
 def infer(intent, documents, aliases):

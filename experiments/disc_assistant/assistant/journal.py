@@ -15,9 +15,9 @@ from uuid import uuid4
 
 from experiments.disc_assistant.assistant.database import connect
 from experiments.disc_assistant.assistant.nlu.languages import load_languages, normalized
-from experiments.disc_assistant.library.store import StaleSnapshot
-from experiments.disc_assistant.library.versions import metadata_markers
-from experiments.disc_assistant.library.transliteration import fingerprint as transliteration_fingerprint
+from library.store import StaleSnapshot
+from library.versions import metadata_markers
+from library.transliteration import fingerprint as transliteration_fingerprint
 from experiments.disc_assistant.assistant.responses import Responses
 from experiments.disc_assistant.assistant.providers import ProviderUnavailable, InvalidProviderResult
 from experiments.disc_assistant.assistant.nlu.interpreter import UnsupportedCommand

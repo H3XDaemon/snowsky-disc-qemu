@@ -83,7 +83,7 @@ def snapshot(config, client, http, *, expected=None, selected=None, selected_pos
                           unexpected_count=sum((actual_keys - expected_keys).values()))
         song = state.get('song', {})
         mark = result['mark']
-        source = PlaybackSource.ALBUM if selected and selected['kind'] == 'album' and selected.get('artist') is None else PlaybackSource.ARTIST_SCOPE
+        source = selected.get('source') if selected and selected.get('source') is not None else PlaybackSource.ALBUM if selected and selected['kind'] == 'album' and selected.get('artist') is None else PlaybackSource.ARTIST_SCOPE
         row = result['items'][mark] if 0 <= mark < result['total'] else None
         checks = {'playing': state.get('state') == WirePlaybackState.PLAYING, 'source': state.get('playerflag') == source,
                   'mark_in_bounds': row is not None, 'position': song.get('pos_id') == mark + 1,
@@ -97,7 +97,9 @@ def snapshot(config, client, http, *, expected=None, selected=None, selected_pos
                                     'title': row['name'][:200] if row else None,
                                     'artist': row['author'][:200] if row else None})
         if selected is not None and ((selected.get('artist') is not None and song.get('song_artist_name') != selected['artist']) or
-                (selected['kind'] == 'track' and song.get('song_name') != selected['title'])):
+                (selected['kind'] == 'track' and song.get('song_name') != selected['title']) or
+                (selected.get('selected_index') is not None and (song.get('song_name') != selected['title']
+                    or song.get('song_artist_name') != selected['target_artist']))):
             queue_failure('selection_mismatch', 'playback changed during queue observation',
                           observed=brief_song(state),
                           expected_artist=(selected.get('artist') or '')[:200],
@@ -139,23 +141,39 @@ def previous_in_queue(config, client, http):
     At the start of the displayed queue, leave playback unchanged in every mode.
     No atomic device revision exists; observed races block or make the result uncertain.
     """
+    return _select_queue(config, client, http, predecessor=True)
+
+
+def select_queue_index(config, client, http, index, *, expected=None):
+    """Select one current queue position with exact displayed-membership protection."""
+    return _select_queue(config, client, http, index=index, expected=expected)
+
+
+def _select_queue(config, client, http, *, predecessor=False, index=None, expected=None):
     import time
     from uuid import uuid4
     from controller.controls import identity
-    result = {'operation_id': uuid4().hex, 'action': 'previous', 'status': 'not_sent',
-              'mutation_attempted': False, 'navigation_policy': 'previous_queue_row'}
+    from controller.catalog import verify_expected
+    result = {'operation_id': uuid4().hex, 'action': 'previous' if predecessor else 'play_queue_index', 'status': 'not_sent',
+              'mutation_attempted': False, 'navigation_policy': 'previous_queue_row' if predecessor else 'explicit_queue_row'}
     try:
+        if not predecessor and (type(index) is not int or not 0 <= index <= 65535):
+            raise ValueError('queue index outside 0..65535')
         require_client(client, Capability.QUEUE_NAVIGATION)
         client.wait_for_mutation()
         before = snapshot(config, client, http)
+        verify_expected(before['items'], expected)
         current = before['mark']
         state = before['state']
         if (state.get('state') not in (WirePlaybackState.PLAYING, WirePlaybackState.PAUSED) or not 0 <= current < before['total']
                 or not _row_matches(state, before['items'][current], current)):
             raise CatalogChanged('current queue position is not confirmed; no selection sent')
-        if current == 0:
+        if predecessor and current == 0:
             return dict(result, status='already_satisfied', outcome='queue_start', state=state, queue=before)
-        index = current - 1
+        if predecessor:
+            index = current - 1
+        if index >= before['total']:
+            raise ValueError('position outside current queue')
         target = before['items'][index]
 
         class Guard:
@@ -183,7 +201,7 @@ def previous_in_queue(config, client, http):
                     and _row_matches(after['state'], target, index)):
                 return dict(result, status='confirmed', outcome='track_changed', state=after['state'], queue=after)
             time.sleep(.15)
-        result.update(status='uncertain', reason='previous queue row not confirmed; selection was not retried')
+        result.update(status='uncertain', reason='queue row not confirmed; selection was not retried')
     except (OSError, ValueError, RuntimeError) as exc:
         attempted = result['mutation_attempted'] or bool(client.mutation_attempted)
         result.update(status='uncertain' if attempted else 'not_sent', mutation_attempted=attempted,

@@ -130,7 +130,8 @@ class HTTPClient:
         reply = self.request('GET', '/progress' + quote(sd_path(path, child=True), safe='/'))
         return reply.json() if reply.body else None
 
-    def upload(self, source, destination, *, image=False, overwrite=False):
+    def upload(self, source, destination, *, image=False, overwrite=False,
+               before_send=None, on_progress=None):
         destination = sd_path(destination, child=True)
         source = Path(source)
         size = source.stat().st_size
@@ -145,7 +146,7 @@ class HTTPClient:
             parent = str(PurePosixPath(destination).parent)
             filename = PurePosixPath(destination).name.casefold()
             offset = 0
-            while True:
+            for _ in range(100):
                 page = self.directory(parent, offset)
                 if any(str(item.get('name', '')).casefold() == filename for item in page['items']):
                     raise FileExistsError(destination)
@@ -154,11 +155,25 @@ class HTTPClient:
                     break
                 if not page['items']:
                     raise ValueError('directory pagination made no progress')
+            else:
+                raise ValueError('directory preflight budget exhausted')
         # Preflight is best-effort: stock truncates an existing path, with no
         # exclusive-create option. Another writer can race this check.
         with source.open('rb') as data:
+            if before_send:
+                before_send()
+            class Body:
+                sent = 0
+
+                def read(self, amount):
+                    chunk = data.read(min(amount, size - self.sent))
+                    self.sent += len(chunk)
+                    if on_progress:
+                        on_progress(self.sent, size)
+                    return chunk
             return self.request('POST', ('/image' if image else '/audio') + quote(destination, safe='/'),
-                data, {'Content-Length': str(size), 'Content-Type': 'application/octet-stream'})
+                Body() if on_progress else data,
+                {'Content-Length': str(size), 'Content-Type': 'application/octet-stream'})
 
     def catalog(self, category='all/song', offset=0, limit=200, **filters):
         headers = self._category(category, filters)

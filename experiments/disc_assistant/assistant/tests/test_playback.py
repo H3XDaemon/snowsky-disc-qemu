@@ -7,8 +7,8 @@ from unittest.mock import Mock, patch
 from controller.fiio_link import frame
 from experiments.disc_assistant.assistant import playback
 from experiments.disc_assistant.assistant.config import Config
-from experiments.disc_assistant.library.store import Store
-from experiments.disc_assistant.library.tests.helpers import TRACKS
+from library.store import Store
+from library.tests.helpers import TRACKS
 
 
 class ScopedHTTP:
@@ -215,8 +215,8 @@ class PlaybackTests(unittest.TestCase):
             client.scan_guard()
 
     def test_member_match_preserves_literal_credit_in_fresh_device_scope(self):
-        from experiments.disc_assistant.library.catalog import Track
-        from experiments.disc_assistant.library.tests.helpers import Catalog
+        from library.catalog import Track
+        from library.tests.helpers import Catalog
         tracks = [Track('Stan', 'Eminem;Dido', 'Album', 0,
                         {'pos': 0, 'name': 'Stan', 'author': 'Eminem;Dido'})]
         head = self.store.publish('test', tracks, {}, expected_generation=self.head['generation'])

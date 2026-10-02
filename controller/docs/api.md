@@ -157,8 +157,8 @@ existing output and fresh catalog-selection workflow. The operation lease pins a
 client/generation and serializes work; callers must not retain the client beyond
 the lease, nest operations, read its socket or construct an unreviewed mutation.
 Its outbound persistent surface admits the reviewed reads and playback/mode,
-favorite and volume mutation tags only. `LiveClient` inherits a narrow shared
-command implementation, not the raw `Client`; reset/scan/settings writes are
+favorite, volume, four sound settings and exact scan-start mutation tags only. `LiveClient` inherits narrow shared
+command implementations, not the raw `Client`; reset/cancel and unrelated settings writes remain
 absent. `PlaybackReader`, `ControlClient` and `SelectionClient` describe the
 capabilities required by guarded operations. Use facade methods for new application features; do not
 expose arbitrary tag forwarding through a web endpoint.
@@ -167,6 +167,29 @@ There is no native `stop()` in this API. Assistant maps its Stop intent to pause
 while preserving position/queue. Repeat-list opt-in is likewise Assistant policy;
 Controller only executes an explicitly requested named mode. History, preferences,
 search results and automatic recommendation launches are not Controller features.
+
+## Sound settings
+
+`sound_settings(expected_generation=None)` returns an observed `CommandResult`
+with `confirmation.settings` containing `gain`, `balance`, `filter` and `dre`,
+and `confirmation.soc_version` from fresh identity readback. Values are strictly
+validated: gain/DRE 0 or 1, balance -20..20 (L20..center..R20), filter 0..5.
+Filter names are `FAST_LL`, `SLOW_LL`, `SLOW_PC`, `FAST_PC`, `NON_OS`, `Wideband_FF`.
+The reviewed capability is explicitly enabled for V2.57 only.
+
+`set_sound_setting(name, value, expected=current_value, expected_generation=None)`
+waits for remaining mutation pacing, then checks identity, scan state and a fresh
+setting value. A changed expected value returns `not_sent` / `sound_changed`.
+An equal requested/current value returns `already_satisfied` without a write.
+Otherwise one setter is sent and bounded fresh reads confirm the requested value;
+the confirmation contains `name` and `value`. Missing/mismatched readback or loss
+after dispatch is `uncertain`, never replayed. Invalid names/values are rejected
+before I/O. No settings are automatically restored on disconnect.
+
+These methods borrow the existing owner and do not enumerate Bluetooth devices,
+identify a hardware output, expose PEQ or establish physical audio performance.
+The wire mappings and earlier independent persistence evidence remain in
+[remote settings](../../docs/protocol/remote-settings.md).
 
 ## Validation
 
@@ -201,7 +224,7 @@ healthy final-stop silence. It never uses personal media or the interactive volu
 
 ## Complete named albums
 
-`DiscSession.play_album(album)` selects the complete native album across raw
+`DiscSession.play_album(album, *, index=None, expected=None)` selects the complete native album across raw
 artist credits and verifies fresh source membership and playback queue. Existing
 `play_artist(artist, album=...)` selects only that artist's album scope. Shared
 TCP/WS `play_album(album, index=None, http=...)` helpers use reviewed V2.57 type 3
@@ -209,6 +232,97 @@ with fresh source bounds, reject empty/reserved names and never retry mutations.
 The session helper adds two equal source reads and final row identity protection.
 The stock catalog has no release identifier or atomic revision token.
 
+
+## Displayed selections and playlist editing
+
+`play_album`, `play_artist` and `play_queue_index(index, *, expected=None)` accept
+an immutable tuple of `QueueItem` rows from a previously displayed source.
+Positions, titles and artists must still match the complete fresh source.
+Indexed album selection verifies both the queue and selected track. Queue
+selection also checks current identity and mode; ambiguous/stale state fails
+before mutation. A missing expected snapshot retains the existing fresh-read
+behavior for non-UI callers. Stock has no atomic revision token.
+
+The V2.57 `playlist_edit` capability enables these session methods:
+
+- `create_playlist(name)` and `rename_playlist(name, new_name)`.
+- `add_playlist_track(name, index, *, expected, album=None)`, using all/song or
+  a complete unscoped album source.
+- `remove_playlist_track(name, index, *, expected)`, removing membership only.
+
+Edits share the serialized session, pacing and scan guard. They re-resolve unique
+names to fresh playlist positions, compare source/membership, send once and
+verify readback. Duplicate/ambiguous tracks are rejected conservatively. Empty
+HTTP 200 responses do not establish success; lost replies remain uncertain with
+no replay. There is no public source-file deletion or playlist deletion here.
+`tests/integration/web_session_check.py` exercises these operations on generated
+media in disposable V2.57 `queue` and `full` CI scenarios.
+
+## Catalog playback and seek
+
+`play_playlist(name, *, index=None, expected=None)` resolves a unique current
+playlist name, checks two equal source reads and rechecks names/members inside
+the final low-level preflight. `play_catalog_track(index, *, favorites=False,
+expected=None)` selects the original all-tracks/favorites position, never a song
+ID or an index renumbered by a browser filter. Both accept displayed `QueueItem`
+tuples and verify the selected track, source, queue membership and mark.
+Unknown versions cannot inherit the V2.57 `catalog_playback` capability.
+
+`seek(position_ms, *, expected: Track, source: PlaybackSource)` requires the
+exact displayed track (including path, queue position and duration), a fresh
+playing/paused state and a position before the known end. The `seek` capability
+and observed socket enforce one paced `0103` attempt; reconnect never replays it.
+`Track.duration_ms` is an optional validated stock duration, not an estimate.
+
+During playback, confirmation requires a fresh `a103` in the requested
+whole-second position window while the same track/source is still observed.
+This is observation, not an atomic firmware acknowledgement. Paused seek returns
+`uncertain` with outcome `seek_waiting_for_playback`: it clears cached position,
+does not resume, and does not retry. `confirmation` retains requested/rounded
+milliseconds. The browser separates requested preview from observed progress.
+A later explicit resume may produce the first useful position tick.
+
+Generated V2.57 FLAC acceptance covers both seek states and stale-track rejection.
+This does not extend validation to SACD/CUE seek or hardware audio output.
+
+## Audio import and explicit scan
+
+`DiscSession.upload_audio(source, destination, *, on_progress=None,
+expected_generation=None)` streams one local audio file to a child of
+`/tmp/sdcard`. The reviewed V2.57 operation waits for mutation pacing, checks
+current compatibility, rejects a cached transfer or case-insensitive name
+collision, then checks scan/connection state immediately before its single HTTP
+write. There is no overwrite option. Directory preflight/readback is bounded
+at 100 pages. File size follows the stock 31-bit positive Content-Length limit.
+
+The optional callback receives `(bytes_read, total_bytes)` while HTTP consumes
+the source; this is transfer progress, not device acknowledgement. A confirmed
+result additionally requires completed stock progress with the exact size and a
+fresh directory entry. Empty HTTP 200 or cached progress alone is insufficient.
+`outcome=destination_exists` is a non-sent collision. Interrupted writes or failed
+readback are uncertain and never retried. Stock has no exclusive-create operation;
+an external writer can race the best-effort preflight. No device hash is claimed.
+
+`DiscSession.scan_library(*, timeout=300, on_progress=None,
+expected_generation=None)` starts one scan and consumes start/count/end events
+under the session lease, without interleaved catalog or health queries. The
+callback receives the discovered count; the confirmed `scan_ended` result keeps
+it in `confirmation.discovered`. An end signal is not proof that every source
+file was indexed, and the firmware uses the same end event for cancellation.
+Timeout/disconnect stays uncertain; no cancel, reset, reconnect replay or implicit
+scan-after-upload is performed. Applications explicitly refresh their catalog
+after an observed end.
+
+Both methods optionally require the original connection generation under the
+operation lease, so staged work cannot dispatch on a replacement connection.
+Progress callbacks must be short and must not invoke session operations.
+Folder import belongs to the caller's serialized sequence of relative audio
+paths; the stock upload handler creates missing parents. Artwork/CUE sidecars
+are outside this facade's confirmable directory-readback surface.
+
+Disposable V2.57 acceptance covers streamed byte equality, duplicate rejection,
+nested audio paths, scan lifecycle and fresh index membership. Large-file limits
+are validated as bounds, not a maximum-size or physical throughput benchmark.
 
 ## Current-state operations
 
@@ -251,3 +365,32 @@ outside the checkout, and runs real synthetic-peer operations. It checks the typ
 marker and bridge HTML, core operation without aiohttp, and optional-extra imports
 after installation. Building/testing neither publishes the package nor creates a
 new repository.
+
+## Current-track descriptive metadata
+
+`Track` retains optional `sample_rate_hz`, `bit_depth`, `channels`,
+`reported_bit_rate`, `genre`, `track_number` and `is_dsd` / `is_sacd` / `is_cue` /
+`is_m3u` observations. Missing, zero, negative or malformed optional numeric
+values become `None`; booleans are never coerced from integers or strings.
+Raw clients still retain the original extra firmware fields for diagnostics.
+`Track.metadata` projects available descriptive values; snapshots serialize the
+optional fields alongside the existing title/artist/album/path/duration fields.
+
+`reported_bit_rate` is the literal positive `song_bit_rate` integer, not a promise
+of measured compressed-file bitrate. Observed FLAC values match a PCM data-rate
+scale. These properties describe the current source, not the active DAC, Bluetooth
+route, negotiated output format or measured audio quality. No album-artist identity
+is inferred. The six-field `Track.identity` preserves existing seek selection
+checks independently of newly available descriptive fields.
+
+## Genre playback
+
+`DiscSession.play_genre(genre, album=None, index=None, expected=None)` selects a
+reviewed V2.57 genre source through the existing owner. Optional immutable
+`QueueItem` rows pin the displayed membership. Two fresh complete scoped reads,
+capability/scan checks and a final HTTP position/identity check precede one write.
+Whole genres and genre albums use type 8; indexed whole-genre tracks use type 10.
+Confirmation checks native queue membership, source and selected position. A
+shortened album is resolved only within that genre. Invalid/reserved selectors,
+stale sources and unsupported versions fail without a playback write; uncertain
+results are never replayed. This does not combine artist and genre selectors.
