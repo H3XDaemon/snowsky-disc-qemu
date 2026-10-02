@@ -164,8 +164,9 @@ cp -f "$ROOTFS"/usr/project/db/*          "$ROOTFS/usr/data/fiio/db/"   2>/dev/n
 cp -f "$ROOTFS"/usr/project/config/wifi/* "$ROOTFS/usr/data/fiio/wifi/" 2>/dev/null || true
 cp -f "$ROOTFS/etc/hostapd.conf"          "$ROOTFS/usr/data/"           2>/dev/null || true
 
-# 6) Config DB: disable the boot logo animation (an infinite-loop overlay drawn on top
-#    of the already-built main screen; it never auto-clears under emu).
+# 6) Config DB: disable the boot logo animation (on V2.40 an infinite-loop overlay drawn on
+#    top of the already-built main screen that never cleared under emu; V2.57 shows the
+#    screen regardless, see emulator/docs/emulation.md).
 #    /usr/data is a SEPARATE UBIFS partition on the device (S21mount_ubifs) and is empty
 #    in the squashfs, so on a fresh rootfs sysconfig.db does not exist yet — mq_player
 #    creates it on first boot with LOCAL_IMG_ANIM=1. We must prime it (one throwaway boot

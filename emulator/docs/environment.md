@@ -18,6 +18,14 @@ scripts directly (`docker exec -e NAME=value …`).
 | `DEVICE_SN` | setup | 14 letters/digits written to `/usr/data/fiio/sn.txt` | not written |
 | `SETTINGS_PROFILE` | setup | Named `SYSCONFIG` preset | `emulator` |
 | `SETTINGS` | setup | `COLUMN=INT,…` on top of the profile | empty |
+| `JACK` | setup, boot | `3.5`, `4.4` or `none`: [analog-output model](audio.md#analog-output-jack-model); `off` removes it; empty keeps the stored state | off |
+| `FPU_GUARD` | every `guest_run` | `reject`, `warn` or `off`: programs that would hit the player's [FPU trap](limits.md#fpu-guard) | `reject` |
+| `EMU_CPUS` | Compose | Fraction of one CPU for the whole container, `0` = no limit ([slowing the guest](limits.md#slowing-the-guest)) | `0` |
+
+Card (`SDCARD_MB`, `SDCARD_FS`, `SDCARD_PARTITION`, `SDCARD_KEEP`), `/usr/data`
+(`USERDATA_MB`), boot mode (`BOOT_MODE`, `BOOT_KEYS`) and network (`NETWORK`,
+`WLAN0…`) have their own pages: [media library](media-library.md#card-image-options),
+[stock init](stock-init.md), [network](network.md#emulated-links-isolation-and-shaping).
 
 ## Lifetime and explicit stop
 
@@ -95,7 +103,7 @@ profile from `emulator/settings/`:
 | Profile | Changes to the stock-created row |
 | --- | --- |
 | `emulator` (default) | `LOCAL_IMG_ANIM=0`, `BATTERY=100`, `LANGUAGE=$LANG_CODE` — straight to the main menu |
-| `factory` | None: the player after a firmware install. `LANGUAGE=100` shows the first-boot language wizard and `LOCAL_IMG_ANIM=1` enables the boot-logo animation. Stock's own "Reset all" writes the same two values ([report](../../research/docs/reports/reset-all.md)) |
+| `factory` | None: the player after a firmware install. `LANGUAGE=100` shows the first-boot language wizard and `LOCAL_IMG_ANIM=1` enables the boot-logo animation. On V2.57 the animation does not hide the screen behind it: the wizard appeared in both boot modes, and with a valid `LANGUAGE` the main menu did ([emulation](emulation.md)). Stock's own "Reset all" writes the same two values ([report](../../research/docs/reports/reset-all.md)) |
 | `always-on` | `emulator` plus `LIGTH_ON_TIME=7` (display never times out) |
 
 `SETTINGS="MEMORY_PLAY=1,POWER_SAVE=0"` adds single integer columns. Unknown

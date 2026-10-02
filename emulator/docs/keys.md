@@ -52,7 +52,10 @@ A key that is already down when the player powers on produces no input event.
 Boot-stage programs read its **pin level**: GPIO port B input register `PxPIN`
 (`0x10010100`, pinctrl base `0x10010000` + `0x100`), active low, through an
 `mmap` of `/dev/mem`. Bit 13 is Volume Up, 14 Volume Down, 15 Play. With no key
-down the word is `0xF6EFE127` (read on a player, V2.40, 2026-08-13).
+down the word is `0xF6EFE127` (read on a player, V2.40, 2026-08-13). Bit 13 is
+confirmed by diskOS's sources and stock's `pb13` path; bit 14 only by stock's
+`pb13`/`pb14` pair; bit 15 and the word on V2.57 are unconfirmed
+([diskOS review](../../research/docs/reports/diskos-v257.md#keys-read)).
 
 The guest's `/dev/mem` is a sparse regular file that holds this one word, so a
 **static** program, which no preload shim can reach, reads the same levels as

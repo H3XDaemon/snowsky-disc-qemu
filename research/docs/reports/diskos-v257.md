@@ -16,9 +16,12 @@ page does not change their status.
 (`111e4dd7…`, 80,596,992 bytes; `TESTED_FW` includes 257) and produces a 100,663,296-byte image (768 NAND blocks;
 lzo, 131072-byte blocks) written to the start of `mtd2` over mask-ROM USB.
 
+Paths in the first column are paths **in the image**; their sources are under
+`payload/` and `diskos_installer/` in the diskOS repository.
+
 | Part | What it does |
 | --- | --- |
-| `usr/project/fiio_init.sh` patch | The stock script must match one known hash (identical from V1.95 to V2.57). Inserted before the coredump branch: `export PATH=/opt/diskos/bin:$PATH` (an `rm` guard for the card), OTA helpers, and a branch that starts `/usr/data/mq_ui`, then `/usr/data/mq_player`, when the selector says diskOS and `/tmp/.diskos_ready` exists. The stock start stays as the fallback. |
+| `usr/project/fiio_init.sh` patch | The stock script must match one known hash (identical from V1.95 to V2.57). Inserted before the coredump branch: `export PATH=/opt/diskos/bin:$PATH` (an `rm` guard for the card), OTA helpers with their own branch that starts an updated UI, and a branch that starts `/usr/data/mq_ui`, then `/usr/data/mq_player`, when the selector says diskOS and `/tmp/.diskos_ready` exists. The stock coredump launch site is gated on the same selector. The stock start stays as the fallback. |
 | `etc/init.d/S96diskos_select` | Runs `diskos-bootprobe`, which maps 4 KiB of `/dev/mem` at `0x10010000` read-only and reads port B `PxPIN` at `+0x100`. Volume Up held = bit 13 low. Result = stored default (Stock if `/usr/data/boot_default_stock` exists) XOR the key. Writes `/tmp/.diskos_boot_select` (`diskos` or `stock`) and a `.why` file; any failure means stock. |
 | `etc/init.d/S97diskos_install` | First-boot installer: copies `/opt/diskos/mq_ui` to `/usr/data/mq_ui`, checks it against `/etc/diskos_manifest`, and makes `/usr/data/mq_player` a link to it. |
 | `/usr/data/mq_player` link | The UI binary dispatches on `argv[0]`: as `mq_player` it executes the real stock player (keeping that name); otherwise it re-executes itself as bare `mq_ui`, so the stock watch loop's `pgrep -x` matches. |
@@ -36,8 +39,11 @@ lzo, 131072-byte blocks) written to the start of `mtd2` over mask-ROM USB.
   constants taken from a **V2.40** player (`tests/test_boot_select.py`,
   `ui/tests/boot_probe_test.py`). No V2.57 read is recorded.
 - **Bits 14 and 15 are not named anywhere in diskOS.** In the released word
-  they are 1, which fits active-low keys, but Volume Down and Play on those bits
-  rest on other evidence. Volume Down appears only as the mask-ROM entry chord.
+  they are 1, which fits active-low keys. In this repository bit 14 = Volume
+  Down is supported only by stock's `pb13`/`pb14` volume GPIO pair
+  ([keys](../../../emulator/docs/keys.md)); **nothing supports bit 15 = Play**
+  beyond the statement in the task brief. In diskOS, Volume Down appears only as
+  the mask-ROM entry chord.
 
 ## Emulator run (run)
 
@@ -76,4 +82,6 @@ stock log timing and captured PCM growth, not by waveform.
 
 On a stock-init guest of this emulator the image hooks (`S96`, `S97`) would run
 in `rcS` order and `/dev/mem` serves the key read, so a diskOS image is a
-candidate for `01_image_rootfs.sh`; that was not tried.
+candidate for `01_image_rootfs.sh`; that was not tried. It needs
+`USERDATA_MB=83`: the bootprobe answers "stock" unless `/usr/data` is a mount
+point (`ui/tools/diskos_bootprobe.c`), which a plain directory is not.

@@ -1,6 +1,8 @@
 # Handoff: stock-init guest, power events and deeper emulation
 
-For **snowsky-disc-boot** and **snowsky-disc-web**, 2026-10-02. What the emulator
+For **snowsky-disc-boot** and **snowsky-disc-server**, 2026-10-02. (The gateway
+service moved from snowsky-disc-web, frozen that day, to snowsky-disc-server; the
+workarounds named below exist there under the same paths.) What the emulator
 now provides for accepting a boot layer on a guest, how to call it, and which
 service-side workarounds it replaces. Details live in the linked emulator pages;
 this note is the map.
@@ -40,6 +42,13 @@ Reference: [stock init, power events and `/usr/data`](../../emulator/docs/stock-
   `0x10010100`. `open("/dev/mem", O_RDONLY|O_SYNC)` and `mmap` of 4096 bytes at
   offset `0x10010000` work for a static program. Released value `0xF6EFE127`;
   bit 13 Volume Up, 14 Volume Down, 15 Play, active low.
+- **How sure each of these is.** Bit 13 = Volume Up, active low: confirmed in
+  diskOS's sources and in stock's `pb13` path. Bit 14 = Volume Down: supported
+  only by stock's `pb13`/`pb14` volume GPIO pair. Bit 15 = Play: given in the
+  task brief, confirmed by no source in this repository. The released word is a
+  read from a **V2.40** player (a diskOS test constant); no V2.57 read exists.
+  Confirm bits 14, 15 and the word on a V2.57 player before relying on them
+  ([diskOS review](../../research/docs/reports/diskos-v257.md#keys-read)).
 - `BOOT_KEYS` (or armed keys) are low before the first guest instruction and are
   released when the UI is ready, at most 60 seconds after power-on in a
   stock-init guest. Armed keys apply to one power-on.
@@ -123,9 +132,9 @@ Each of these is opt-in and documented on its own page:
 | `SETTINGS_PROFILE=emulator\|factory\|always-on`, `SETTINGS=COLUMN=INT,…` | Stock settings presets |
 | `SDCARD_MB`, `SDCARD_FS=exfat`, `SDCARD_PARTITION=1` | A card like the player's; with a partition stock mounts it itself |
 | `Peripherals.set_sd(False, force=True)` | Card pulled while a track plays |
-| `WLAN0=1` (+ `WLAN0_STATE`, `WLAN0_ADDR`, `WLAN0_MAC`); `network link wlan0 …` | Emulated `wlan0` with controllable state and address |
-| `NETWORK=isolated`; `network link …` | Guest with no network; links can appear later |
-| `network shape --rate … --delay … --loss …` | Slow link towards clients |
+| `WLAN0=1` (+ `WLAN0_STATE`, `WLAN0_ADDR`, `WLAN0_MAC`); `python3 -m emulator.runtime.network link wlan0 …` | Emulated `wlan0` with controllable state and address |
+| `NETWORK=isolated`; `python3 -m emulator.runtime.network link …` | Guest with no network; links can appear later |
+| `python3 -m emulator.runtime.network shape --rate … --delay … --loss …` | Slow link towards clients |
 | `JACK=3.5\|4.4\|none`; `Peripherals.set_jack()` | Stock's own output detection; unplug pauses |
 | `/emu/asound/card0/pcm3p/sub0/{status,hw_params}`, `emu/audio-state` | Output stream as on the player; silence vs samples |
 | `FPU_GUARD=reject\|warn\|off` | `guest_run` refuses programs that would hit the player's FPU trap |
@@ -148,7 +157,7 @@ Findings worth knowing:
 
 ## What the service's workarounds can become
 
-| Workaround in snowsky-disc-web | Replace with |
+| Workaround in snowsky-disc-server | Replace with |
 | --- | --- |
 | `scripts/runtime/guest_supervisor.py` (polls `Device.service_requests()`, 2 h lifetime) | `POWER_WATCH=1` for `20_boot.sh` in a direct boot (`power_watch start\|stop\|status`; log lines `Power request: stopping` / `completed` are kept; state in `/work/power-watch.json`). A stock-init guest needs nothing. `Device.service_requests()` is unchanged for callers that keep polling. |
 | `GUEST_TTL='7200'`, `guest_run 7200 …` | `GUEST_TTL=0`, `guest_run 0 …`, and an explicit `99_stop.sh` / `25_power.sh off` |
@@ -158,7 +167,7 @@ Findings worth knowing:
 | `printf '00000000000000' > sn.txt` | `DEVICE_SN=…` at setup |
 | `unshare --net` plus a hand-made dummy `eth1` for the offline boot | `NETWORK=isolated` for `20_boot.sh`, then `python3 -m emulator.runtime.network link eth1 --state up --addr 192.0.2.2/24 --gateway 192.0.2.1`; run clients with `ip netns exec disc-guest …` |
 | `/api/device` `output: null` | Pass `--asound-dir /emu/asound/card0` in the emulator. The service's profile check accepts only `/proc/asound/cardN`; that path cannot be provided for a static program, so the check needs an emulator exception. |
-| `start-stop-daemon -x` checks skipped as "emulated" (`deployment_boot.py`) | They work in a stock-init guest (`/proc/<pid>/exe` is the program for BusyBox). The service's own static checks should compare `comm`. |
+| `start-stop-daemon -x` checks skipped as "emulated" (`tests/integration/deployment_boot.py`, in the frozen snowsky-disc-web only) | They work in a stock-init guest (`/proc/<pid>/exe` is the program for BusyBox). A static program's own checks should compare `comm`. |
 | Hard-float build found only on the device | `guest_run` now refuses it (exit 126) before it starts |
 
 Not replaceable here: wrong-clock tests (the service needs its own offset option),
@@ -215,9 +224,22 @@ Additions only; nothing was renamed or removed.
   `/work/sdcard.img` loop device; attaching an image failed when the container
   lacked the node of a newly created loop device.
 
+## What was run
+
+Every pull request of the series passed the firmware-free suite and its own new
+scenario on its branch head, and the top of the series (`328b2a5`) passed
+`full`, `stock-init`, `environment`, `card-network` and `audio-guards`.
+
+The series touches the cable state (`USB_POWER`) and idle power-off (the power
+watcher, a stock-init guest's PID 1), so the two long power scenarios of
+`firmware/v2.57.json` matter. They were **not** run during the series; they were
+run afterwards on the follow-up fixes, see the pull request that carries this
+paragraph for the result.
+
 ## Revision to pin
 
-Pin the `2.x` merge commit of the last of these pull requests you take. Each one
-is usable on its own, in this order: stock-init and power events (#37, merged as
-`4f6069f`); environment presets; card, network and Reset all; audio, jack model
-and guards; this note with the diskOS review.
+Merges into `2.x`: stock-init and power events #37 `4f6069f`; environment
+presets #38 `a7fc408`; card, network and Reset all #39 `0045d21`; audio, jack
+model and guards #40 `b9c5323`; diskOS review and this note #41 `6ed3168`.
+Each is usable on its own in that order. **Pin `6ed3168`** for the whole series,
+or the merge of the follow-up fixes (#42, #43, #44) once they are in.

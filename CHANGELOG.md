@@ -86,10 +86,20 @@ Active firmware: **V2.57**. Local protocol research is finalized in
   for programs and tests, a guard that refuses programs which run here but
   would die on the player's FPU handling, and a page on what the emulator
   cannot show. [Audio](emulator/docs/audio.md#output-stream-state), [limits](emulator/docs/limits.md).
+- An opt-in model of the 3.5 mm and 4.4 mm outputs that feeds stock's own
+  detection (unplugging pauses playback), and `EMU_CPUS` to slow the whole
+  container. [Jack model](emulator/docs/audio.md#analog-output-jack-model),
+  [slowing the guest](emulator/docs/limits.md#slowing-the-guest).
 - Daily OTA catalog monitoring with tracking issues; no automatic firmware
   download or promotion. Optional viewer Power-on script for custom startup.
 
 ### Changed
+
+- The emulator image gains `exfatprogs`: rebuild it
+  (`docker build -t snowsky-disc-qemu-ci emulator/docker`) before using an exFAT
+  card. Everything else works with the previous image.
+- Known gap of the pinned qemu 7.2: `getsockopt(SO_ERROR)` returns the host's
+  error number to a guest program. [Workaround](emulator/docs/limits.md#socket-error-numbers).
 
 - Move emulator launch/configuration/build files into `emulator/` and rename its
   Compose service to `emulator`. Container-name overrides work throughout the launcher.

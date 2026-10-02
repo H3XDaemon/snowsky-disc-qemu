@@ -112,6 +112,14 @@ With a healthy battery the UI went *back* to the SNOWSKY splash and stayed. Trac
 **infinite-loop overlay drawn on top** of it and never auto-clears under emulation (~17
 loops observed). The config key `LOCAL_IMG_ANIM` controls it.
 
+That observation is from the original V2.40 work. **On V2.57 it does not
+reproduce** (checked 2026-10-02 in a direct boot): with `LOCAL_IMG_ANIM=1` and
+the fresh `LANGUAGE=100` the language wizard is shown, and with
+`LOCAL_IMG_ANIM=1` and a valid `LANGUAGE` the main menu is on screen 15 seconds
+after boot. The default preset still sets the flag to 0 (V2.40 needs it, and it
+skips the logo); the `factory` [settings profile](environment.md#stock-settings-profiles)
+leaves it at 1.
+
 **Fix:** `sqlite3 sysconfig.db "UPDATE SYSCONFIG SET LOCAL_IMG_ANIM=0"` → the overlay is
 skipped and the real first-boot flow can proceed. Current setup also presets
 English, so the normal flow reaches the main menu without the language wizard;
