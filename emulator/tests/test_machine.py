@@ -149,6 +149,19 @@ class ShellTests(unittest.TestCase):
         (self.base / 'present.img').touch()
         self.assertEqual(loops(self.base / 'present.img'), '/dev/loop7\n')
 
+    def test_loop_attach_creates_the_node_the_container_lacks(self):
+        node = self.base / 'loop42'
+        (self.base / 'commands/losetup').write_text(
+            f'#!/bin/sh\n[ "$1" = -f ] && echo {node} || echo "attach $@" >> {self.base}/losetup.log\n')
+        (self.base / 'commands/losetup').chmod(0o755)
+        (self.base / 'commands/mknod').write_text(f'#!/bin/sh\necho "$@" >> {self.base}/mknod.log\n')
+        (self.base / 'commands/mknod').chmod(0o755)
+        output = subprocess.check_output(['bash', '-c', f'source {SCRIPTS}/lib.sh; loop_attach /work/card.img'],
+                                         env=self.env, text=True)
+        self.assertEqual(output, f'{node}\n')
+        self.assertEqual((self.base / 'mknod.log').read_text(), f'{node} b 7 42\n')
+        self.assertEqual((self.base / 'losetup.log').read_text(), f'attach {node} /work/card.img\n')
+
     def stub(self, name, *args):
         target = self.base / name
         target.unlink(missing_ok=True)

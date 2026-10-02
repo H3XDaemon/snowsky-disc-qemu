@@ -130,7 +130,7 @@ if [ -n "$SD_CONTENT" ]; then
   rm -f "$T/README.md" "$T/.gitkeep" 2>/dev/null || true
   sync; umount "$T"; rmdir "$T"
   fi
-  LOOP="$(losetup -f --show "$IMG")"
+  LOOP="$(loop_attach "$IMG")"
   # Expose as REAL device nodes (not symlinks): a symlink -> /dev/loop0 can't be resolved from
   # inside the guest's chroot (it has no /dev/loop0), so the guest's own `mount /dev/mmcblk0p1`
   # would fail. mknod with the loop's major(7)/minor lets the guest mount the FAT directly.
