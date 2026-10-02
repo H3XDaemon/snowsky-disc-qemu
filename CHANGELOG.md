@@ -82,6 +82,10 @@ Active firmware: **V2.57**. Local protocol research is finalized in
   [Network](emulator/docs/network.md#emulated-links-isolation-and-shaping).
 - Stock "Reset all" runs to completion in a stock-init guest; analysis showed it
   never involved the MCU. [Report](research/docs/reports/reset-all.md).
+- The stock output stream state (format, rate, running, silence while paused)
+  for programs and tests, a guard that refuses programs which run here but
+  would die on the player's FPU handling, and a page on what the emulator
+  cannot show. [Audio](emulator/docs/audio.md#output-stream-state), [limits](emulator/docs/limits.md).
 - Daily OTA catalog monitoring with tracking issues; no automatic firmware
   download or promotion. Optional viewer Power-on script for custom startup.
 

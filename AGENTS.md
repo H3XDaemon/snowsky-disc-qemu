@@ -161,6 +161,10 @@ Card: `SDCARD_MB`, `SDCARD_FS=exfat`, `SDCARD_PARTITION=1` (`emulator/runtime/ca
 partition stock mounts the card itself, so do not add another "remount" there. Forced removal is
 `set_sd(False, force=True)`. Network: `WLAN0=1`, `NETWORK=isolated`, `python3 -m emulator.runtime.network`
 (`emulator/docs/network.md`). Stock "Reset all" has no MCU step (`research/docs/reports/reset-all.md`).
+`guest_run` refuses hard-float programs that would hit the player's FPU trap (`FPU_GUARD`,
+`emulator/runtime/abi.py`); the output stream is published under `/emu/asound` and `emu/audio-state`.
+Opt-in jack model: `JACK=3.5|4.4|none` (pb20 and ADC channel 2 in `fbshim`); unplug pauses, it never gates playback.
+`emulator/docs/limits.md` lists what only a player can show; keep it current when adding stubs.
 Loop devices are VM-global: always go through `image_loops`/`card.loops`, never `losetup -j` on a
 path that may not exist. In a stock-init guest a netlink port is the player's PID in ITS namespace.
 

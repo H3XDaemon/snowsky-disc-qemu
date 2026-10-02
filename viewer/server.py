@@ -14,7 +14,7 @@ the real stock UI from a browser on the host, no hardware.
   GET /move?x&y    move (during a drag; only between down and up)
   GET /up          release
   POST /button    physical button {name, gesture}; GET /device.json = power/screen state
-  POST /peripheral {name: sd|usb|boot_keys, ...}; boot_keys {keys: [...]} are held at the next power-on
+  POST /peripheral {name: sd|usb|jack|boot_keys, ...}; boot_keys {keys: [...]} are held at the next power-on
   GET /events     SSE device snapshots on connect/change, with idle heartbeats
   GET /key?k=…    single press (volume_up|volume_down|play_pause|power), or safe ?code=<int>
 
@@ -29,7 +29,7 @@ import os, sys, time, struct, threading, json
 from pathlib import Path
 from emulator.runtime.framebuffer import Framebuffer, FrameState
 from emulator.runtime.touch import Touch
-from emulator.runtime.audio import capture_info, read_chunk
+from emulator.runtime.audio import capture_info, output_state, read_chunk
 from emulator.runtime.keys import Buttons, Device, CODES
 from emulator.runtime.peripherals import Peripherals
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -133,6 +133,8 @@ class Handler(BaseHTTPRequestHandler):
                     viewer_controls.set_sd(data['inserted'], force=data.get('force', False))
                 elif data['name'] == 'usb':
                     viewer_controls.set_usb(data['connected'])
+                elif data['name'] == 'jack':
+                    viewer_controls.set_jack(data['state'])
                 elif data['name'] == 'boot_keys':
                     viewer_controls.set_boot_keys(data['keys'])
                 else:
@@ -168,6 +170,7 @@ class Handler(BaseHTTPRequestHandler):
             except (OSError, ValueError, struct.error):
                 info = {'generation': None, 'bytes': 0}
             info['output_gain'] = device.gains()
+            info['output'] = output_state(ROOTFS)
             info['running'] = state.device['running']
             self._audio_response(200, 'application/json', json.dumps(info).encode())
         elif p == '/audio.pcm':

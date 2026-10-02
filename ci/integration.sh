@@ -9,7 +9,7 @@ export FW_VERSION="${FW_VERSION:-$(cat firmware/active-version)}"
 CI_SCENARIO="${CI_SCENARIO:-full}"
 CI_IDLE_PHASE="${CI_IDLE_PHASE:-all}"
 case "$CI_IDLE_PHASE" in all|quiet|power|usb) ;; *) echo 'Unknown CI_IDLE_PHASE' >&2; exit 2;; esac
-case "$CI_SCENARIO" in full|queue|queue-reads|settings|peq|sacd|themes|preferences|playlists|library|library-delete|scan-cancel|library-reset|track-end|formats|discovery|idle|idle-usb|stock-init|environment|card-network) ;; *) echo 'Unknown CI_SCENARIO' >&2; exit 2;; esac
+case "$CI_SCENARIO" in full|queue|queue-reads|settings|peq|sacd|themes|preferences|playlists|library|library-delete|scan-cancel|library-reset|track-end|formats|discovery|idle|idle-usb|stock-init|environment|card-network|audio-guards) ;; *) echo 'Unknown CI_SCENARIO' >&2; exit 2;; esac
 if [ "$CI_SCENARIO" = sacd ]; then
   test -f "${CI_SACD_ISO:?sacd requires an explicitly approved local ISO file}"
 fi
@@ -88,6 +88,11 @@ if [ "$CI_SCENARIO" = stock-init ]; then
   exit 0
 fi
 compose exec -T emulator bash /repo/emulator/scripts/10_setup_env.sh
+if [ "$CI_SCENARIO" = audio-guards ]; then
+  # Output stream reporting (closed/running, pause as silence) and the FPU-trap guard.
+  compose exec -T emulator python3 -B -m tests.integration.audio_guards_check
+  exit 0
+fi
 if [ "$CI_SCENARIO" = idle ]; then
   compose exec -T emulator python3 -B -m tests.integration.idle_check --phase "$CI_IDLE_PHASE"
   exit 0

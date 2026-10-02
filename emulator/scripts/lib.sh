@@ -42,8 +42,11 @@ kill_guest(){
 # (BOOT_MODE=init) lives in its own PID/IPC/UTS namespaces: commands join them, so
 # guest pgrep/killall, /proc and message queues agree with the running programs.
 # With NETWORK=isolated the guest also has its own network namespace (both boot modes).
+# The program is first checked for the player's FPU trap, which qemu-user cannot show
+# (fpu_guard below).
 guest_run(){
   local ttl="$1" init net enter=(); shift
+  fpu_guard "$@" || return 126
   local confined=(timeout "$ttl" setpriv
     --bounding-set=-net_admin,-sys_time,-sys_boot,-sys_module,-sys_rawio
     --no-new-privs chroot "$ROOTFS" "$@")
@@ -54,6 +57,21 @@ guest_run(){
   else
     "${confined[@]}"
   fi
+}
+
+# A hard-float program with a non-executable stack runs here and dies on the player
+# (emulator/runtime/abi.py). FPU_GUARD=reject (default) refuses to start it, warn only
+# says so, off skips the check. Stock programs pass: they have an executable stack.
+fpu_guard(){
+  local program="$1"
+  [ "${FPU_GUARD:-reject}" != off ] || return 0
+  if [ "${program##*/}" = qemu-mipsel-static ]; then      # explicit qemu [-0 argv0] PROGRAM
+    shift
+    while [ "${1:-}" = -0 ]; do shift 2; done
+    program="${1:-}"
+  fi
+  case "$program" in /*) ;; *) return 0 ;; esac
+  python3 -B -m emulator.runtime.abi check "$ROOTFS$program" || [ "${FPU_GUARD:-reject}" = warn ]
 }
 
 # Name of the guest's own network namespace (NETWORK=isolated), else failure.

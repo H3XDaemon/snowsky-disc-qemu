@@ -11,6 +11,7 @@ Start with the [launcher and configuration guide](running.md).
 - [Physical buttons](keys.md)
 - [Media-library auto-update investigation](media-library.md)
 - [Local network emulation](network.md)
+- [What qemu-user cannot show](limits.md)
 - [Settings reference](settings.md)
 - [Emulator status](status.md)
 - [Stock init boot, power events and `/usr/data`](stock-init.md)

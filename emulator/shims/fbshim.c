@@ -33,6 +33,13 @@ static int marker_is_one(const char*path){
   if(f>=0){sys3(__NR_read,f,(long)&value,1);sys3(__NR_close,f,0,0);}
   return value=='1';
 }
+/* Optional jack model (JACK=..., emulator/docs/audio.md): '3' 3.5 mm plugged,
+   '4' 4.4 mm balanced plugged, 'n' nothing. No marker = the model is off. */
+static int jack_state(void){
+  char value=0;long f=sys3(__NR_open,(long)"/emu/jack",0,0);
+  if(f>=0){sys3(__NR_read,f,(long)&value,1);sys3(__NR_close,f,0,0);}
+  return value=='3'||value=='4'||value=='n'?value:0;
+}
 static int adc_device(int fd){
   return device_is(fd,"/dev/jz_adc_aux_0")||device_is(fd,"/dev/jz_adc_aux_1")||
          device_is(fd,"/dev/jz_adc_aux_2")||device_is(fd,"/dev/jz_adc_aux_3");
@@ -54,6 +61,13 @@ long read(int fd,void*data,unsigned long count){
     if(device_is(fd,"/dev/jz_adc_aux_1")){
       wr32(data,0,marker_is_one("/emu/usb-connected")?600:0);
       return 4; /* >500 connected, <100 disconnected; not calibrated millivolts */
+    }
+    int jack=jack_state();
+    if(jack){
+      /* Stock adc_check: channel 2 at 801..949 or >=1501 is a 4.4 mm plug, 1151..1349
+         none; channels 0 and 3 are read and ignored. Threshold fixtures, not millivolts. */
+      wr32(data,0,device_is(fd,"/dev/jz_adc_aux_2")?(jack=='4'?875:1250):0);
+      return 4;
     }
     *__errno_location()=19; /* ENODEV: jack/other ADC channels not modelled */
     return -1;
@@ -148,6 +162,8 @@ int ioctl(int fd,unsigned long req,void*arg){
   /* Only the two real volume GPIOs: active-low state maintained by the viewer.
      Unknown pins and requests retain their real failure semantics. */
   if(req==0x2000477a&&arg&&device_is(fd,"/dev/gpio")){
+    /* pb20 is the 3.5 mm jack switch: 1 = plugged. Polled only without a 4.4 mm plug. */
+    if(eq(arg,"pb20")){int jack=jack_state();if(jack)return jack=='3';}
     int idx=eq(arg,"pb13")?0:eq(arg,"pb14")?1:-1;
     if(idx>=0){
       char levels[2]={'1','1'};

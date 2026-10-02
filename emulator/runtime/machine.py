@@ -14,7 +14,7 @@ import subprocess
 import sys
 import time
 
-from emulator.runtime import gpio, network
+from emulator.runtime import abi, gpio, network
 from emulator.runtime.guest_init import FORCED, REBOOT, mounted, unmount
 
 REPO = Path(__file__).resolve().parents[2]
@@ -137,10 +137,11 @@ class Machine:
         self.boots = 0
         self.child = None
         self.cut = False
+        self.trapping = []                  # hard-float programs found in /opt and /usr/data
 
     def publish(self, name, reason=None):
         data = dict(state=name, boots=self.boots, reason=reason, pid=os.getpid(),
-                    init=init_pid(self.root))
+                    init=init_pid(self.root), fpu_trap=sorted(set(self.trapping)))
         path = self.root / STATE
         temporary = path.with_name(path.name + '.new')
         temporary.write_text(json.dumps(data) + '\n')
@@ -148,6 +149,7 @@ class Machine:
 
     def power_on(self, console):
         self.boots += 1
+        self.trapping = []
         shell(self.root, 'board_reset', check=True, stdout=console, stderr=subprocess.STDOUT)
         # Keys named for this run apply to its first power-on; armed keys to the next one, once.
         gpio.power_on(self.root, self.keys if self.boots == 1 else ())
@@ -201,6 +203,7 @@ class Machine:
                 # Stock mounts a card whose partition it can enumerate by itself, a moment
                 # after the player starts: give it that moment before stepping in.
                 waiting, grace, settled = False, time.monotonic() + 4, time.monotonic() + 24
+                self.fpu_scan()
                 if keys_down:
                     gpio.release(self.root)
                     keys_down = False
@@ -211,6 +214,18 @@ class Machine:
             if settled and time.monotonic() >= settled:
                 settled = None
             time.sleep(.25)
+
+    def fpu_scan(self):
+        """Programs an image or an installer added start outside guest_run: name the ones
+        that run here but would die on the player's kernel (emulator/runtime/abi.py)."""
+        if os.environ.get('FPU_GUARD', 'reject') == 'off':
+            return
+        for name, outcome, text in abi.check(abi.scan(self.root, ('/opt', '/usr/data'))):
+            if outcome == 'trap':
+                self.trapping.append(name[len(str(self.root)):])
+                print(f'[fpu-guard] {text}\n[fpu-guard] {abi.MESSAGE}', flush=True)
+        if self.trapping:
+            self.publish('running')
 
     @staticmethod
     def ui_pid(device):

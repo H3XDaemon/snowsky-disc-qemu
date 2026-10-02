@@ -50,6 +50,19 @@ class PeripheralTests(unittest.TestCase):
         self.controls.set_boot_keys([])
         self.assertEqual(self.controls.snapshot()['boot_keys'], [])
 
+    def test_jack_model_is_off_until_a_state_is_set(self):
+        self.assertIsNone(self.controls.snapshot()['jack'])
+        for state, mark in (('3.5', b'3'), ('none', b'n'), ('4.4', b'4')):
+            self.controls.set_jack(state)
+            self.assertEqual((self.root / 'emu/jack').read_bytes(), mark)
+            self.assertEqual(self.controls.snapshot()['jack'], state)
+        for value in ('2.5', None, 3.5):
+            with self.assertRaises(ValueError):
+                self.controls.set_jack(value)
+        self.assertEqual(self.controls.jack(), '4.4')
+        self.controls.set_jack('off')
+        self.assertIsNone(self.controls.jack())
+
     def test_peripheral_types_and_power_transition_reject_before_mutation(self):
         for value in ('true', 1, None, [], {}):
             with self.assertRaises(ValueError):
