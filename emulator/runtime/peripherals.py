@@ -4,12 +4,19 @@ from pathlib import Path
 import socket
 import stat
 import subprocess
+import sys
 import threading
 import time
 
-from emulator.runtime import card, gpio
+from emulator.runtime import card, gpio, network
 from emulator.runtime.keys import BRIGHTNESS
 from firmware.profile import identify_player
+
+# Unicast kobject uevent to one netlink port; run inside the player's network namespace.
+SEND_UEVENT = ('import socket, sys\n'
+               'channel = socket.socket(socket.AF_NETLINK, socket.SOCK_DGRAM, 15)\n'
+               'channel.bind((0, 0))\n'
+               'channel.sendto(sys.stdin.buffer.read(), (int(sys.argv[1]), 0))\n')
 
 
 class Peripherals:
@@ -99,10 +106,10 @@ class Peripherals:
 
         Stock polls three times a second and debounces about a second."""
         path = self.root / 'emu/jack'
-        if state == 'off':
+        if isinstance(state, str) and state == 'off':
             path.unlink(missing_ok=True)
             return
-        if state not in self.JACKS:
+        if not isinstance(state, str) or state not in self.JACKS:
             raise ValueError('Expected jack 3.5, 4.4, none or off')
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open('r+b' if path.exists() else 'wb') as marker:     # no empty-file interval
@@ -120,15 +127,27 @@ class Peripherals:
         for line in Path(f'/proc/{pid}/status').read_text().splitlines():
             if line.startswith('NSpid:'):
                 port = int(line.split()[-1])     # differs from pid in a stock-init guest
-        if not any(row.split()[1:3] == ['15', str(port)] for row in
-                   Path('/proc/net/netlink').read_text().splitlines()[1:]):
+        if not any(row.split()[1:3] == ['15', str(port)] for row in self._netlink_table().splitlines()[1:]):
             raise ValueError('SD listener is not ready')
         return port
+
+    def _netlink_table(self):
+        """Netlink sockets of the network namespace the player lives in."""
+        own = network.namespace(self.root)
+        if not own:
+            return Path('/proc/net/netlink').read_text()
+        return subprocess.check_output(['nsenter', f'--net=/run/netns/{own}', 'cat', '/proc/net/netlink'],
+                                       text=True, timeout=5)
 
     def _event(self, action):
         pid = self._listener()
         payload = (f'{action}@/devices/platform/mmc/mmcblk0\0ACTION={action}\0'
                    'SUBSYSTEM=block\0DEVNAME=mmcblk0\0').encode()
+        own = network.namespace(self.root)
+        if own:                              # an isolated guest: the socket must be made in its namespace
+            subprocess.run(['nsenter', f'--net=/run/netns/{own}', sys.executable, '-c', SEND_UEVENT, str(pid)],
+                           input=payload, check=True, timeout=5)
+            return
         with socket.socket(socket.AF_NETLINK, socket.SOCK_DGRAM, 15) as channel:
             channel.bind((0, 0))
             channel.sendto(payload, (pid, 0))

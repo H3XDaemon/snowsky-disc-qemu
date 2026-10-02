@@ -27,7 +27,7 @@ ACTIVITY = {b'c': 'closed', b's': 'silence', b'p': 'samples'}
 
 
 def output_state(rootfs):
-    """The stock output stream as the audio shim last reported it.
+    """The stock output stream as the audio shim last reported it. Never raises.
 
     `stream` is the ALSA state a program on the player reads in
     /proc/asound/card0/pcm3p/sub0/status (closed, PREPARED, RUNNING). Stock keeps
@@ -35,18 +35,36 @@ def output_state(rootfs):
     silence from samples.
     """
     root = Path(rootfs)
-    result = dict(stream='closed', activity='closed', format=None, rate=None, channels=None)
-    try:
-        status = (root / STREAM / 'status').read_text()
-        parameters = (root / STREAM / 'hw_params').read_text()
-        result['activity'] = ACTIVITY.get((root / 'emu/audio-state').read_bytes()[:1], 'closed')
-    except OSError:
-        return result
-    fields = dict(line.split(':', 1) for line in (status + parameters).splitlines() if ':' in line)
-    if 'state' in fields:
-        result.update(stream=fields['state'].strip(), format=fields['format'].strip(),
-                      rate=int(fields['rate'].split()[0]), channels=int(fields['channels']))
-    return result
+    closed = dict(stream='closed', activity='closed', format=None, rate=None, channels=None)
+    for _ in range(3):
+        try:
+            status = (root / STREAM / 'status').read_text()
+            parameters = (root / STREAM / 'hw_params').read_text()
+            activity = ACTIVITY.get((root / 'emu/audio-state').read_bytes()[:1], 'closed')
+            if (root / STREAM / 'status').read_text() != status:
+                continue                    # the shim replaced the pair between the two reads
+        except OSError:
+            return closed
+        fields = dict(line.split(':', 1) for line in (status + parameters).splitlines() if ':' in line)
+        try:
+            return dict(stream=fields['state'].strip(), activity=activity, format=fields['format'].strip(),
+                        rate=int(fields['rate'].split()[0]), channels=int(fields['channels']))
+        except (KeyError, ValueError, IndexError):
+            if 'state' not in fields:
+                return closed               # both files say "closed"
+    return closed                           # still changing: report the settled state next time
+
+
+def reset_output(rootfs):
+    """After the guest was stopped without pcm_close: nothing is playing any more."""
+    root = Path(rootfs)
+    for name in ('status', 'hw_params'):
+        path = root / STREAM / name
+        if path.parent.is_dir():
+            path.write_text('closed\n')
+    marker = root / 'emu/audio-state'
+    if marker.exists():
+        marker.write_bytes(b'c')
 
 
 def read_chunk(rootfs, generation, offset, limit=262144):

@@ -56,7 +56,7 @@ class PeripheralTests(unittest.TestCase):
             self.controls.set_jack(state)
             self.assertEqual((self.root / 'emu/jack').read_bytes(), mark)
             self.assertEqual(self.controls.snapshot()['jack'], state)
-        for value in ('2.5', None, 3.5):
+        for value in ('2.5', None, 3.5, [], {}, ['3.5']):
             with self.assertRaises(ValueError):
                 self.controls.set_jack(value)
         self.assertEqual(self.controls.jack(), '4.4')

@@ -15,21 +15,27 @@ with an executable main stack, whose threads would still trap. Soft-float is
 the safe build.
 
   python3 -m emulator.runtime.abi check FILE...     exit 1 if any FILE would trap
-  python3 -m emulator.runtime.abi scan ROOTFS DIR... every executable ELF under DIR
+  python3 -m emulator.runtime.abi check --root ROOTFS PATH...   PATH as the guest sees it
+  python3 -m emulator.runtime.abi scan ROOTFS DIR... every executable program under DIR
 """
 import os
 from pathlib import Path
 import struct
 import sys
 
-PT_INTERP, PT_GNU_STACK, PT_MIPS_ABIFLAGS = 3, 0x6474e551, 0x70000003
+PT_DYNAMIC, PT_INTERP, PT_GNU_STACK, PT_MIPS_ABIFLAGS = 2, 3, 0x6474e551, 0x70000003
+DT_FLAGS_1, DF_1_PIE = 0x6ffffffb, 0x08000000
 FP_ABI = {0: 'any', 1: 'hard (double)', 2: 'hard (single)', 3: 'soft', 4: 'hard (old 64)',
           5: 'hard (fpxx)', 6: 'hard (fp64)', 7: 'hard (fp64a)'}
 SOFT = 3
 
 
 def inspect(path):
-    """ELF facts of a 32-bit little-endian MIPS program, or None for anything else."""
+    """ELF facts of a 32-bit little-endian MIPS program, or None for anything else.
+
+    A file that is cut short (an installer may still be writing it) yields the facts
+    read so far; what is missing stays unknown. Never raises for file content.
+    """
     try:
         with open(path, 'rb') as file:
             header = file.read(52)
@@ -40,12 +46,13 @@ def inspect(path):
                 return None
             offset, = struct.unpack_from('<I', header, 28)
             size, count = struct.unpack_from('<HH', header, 42)
-            facts = dict(interpreter=None, stack_executable=True, fp_abi=None)
+            facts = dict(interpreter=None, stack_executable=True, fp_abi=None, library=False)
+            pie = False
             for index in range(min(count, 64)):
                 file.seek(offset + index * size)
                 entry = file.read(32)
                 if len(entry) < 32:
-                    return None
+                    break
                 segment, where, _, _, length, _, flags, _ = struct.unpack('<8I', entry)
                 if segment == PT_INTERP and length < 256:
                     file.seek(where)
@@ -54,16 +61,52 @@ def inspect(path):
                     facts['stack_executable'] = bool(flags & 1)
                 elif segment == PT_MIPS_ABIFLAGS and length >= 8:
                     file.seek(where + 7)
-                    facts['fp_abi'] = file.read(1)[0]
+                    value = file.read(1)
+                    facts['fp_abi'] = value[0] if value else None
+                elif segment == PT_DYNAMIC:
+                    file.seek(where)
+                    table = file.read(min(length, 8192))
+                    for position in range(0, len(table) - 7, 8):
+                        tag, item = struct.unpack_from('<II', table, position)
+                        if tag == DT_FLAGS_1 and item & DF_1_PIE:
+                            pie = True
+            # ET_DYN without an interpreter is a shared library unless the linker marked it
+            # as a (static) position-independent executable.
+            facts['library'] = kind == 3 and not facts['interpreter'] and not pie
             return facts
-    except OSError:
+    except (OSError, struct.error):
         return None
+
+
+def resolve(root, program, limit=16):
+    """The file a guest path names, following links INSIDE the guest root (as chroot does)."""
+    root = Path(root)
+    parts, done = [part for part in str(program).split('/') if part], []
+    while parts:
+        part = parts.pop(0)
+        if part == '.':
+            continue
+        if part == '..':
+            done = done[:-1]
+            continue
+        current = root.joinpath(*done, part)
+        if current.is_symlink():
+            limit -= 1
+            if limit < 0:
+                return current
+            target = os.readlink(current)
+            if target.startswith('/'):
+                done = []
+            parts = [piece for piece in target.split('/') if piece] + parts
+            continue
+        done.append(part)
+    return root.joinpath(*done)
 
 
 def verdict(facts):
     """'ok', 'trap' or 'unknown' (no ABI flags: built by a toolchain that does not say)."""
-    if facts is None:
-        return 'ok'                     # not a MIPS program: a script, data, another machine
+    if facts is None or facts['library']:
+        return 'ok'                     # not a MIPS program: a script, data, a shared library
     if facts['fp_abi'] == SOFT:
         return 'ok'
     if facts['fp_abi'] is None:
@@ -112,8 +155,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('action', choices=['check', 'scan'])
     parser.add_argument('paths', nargs='+')
+    parser.add_argument('--root', help='check: resolve the paths inside this guest root')
     args = parser.parse_args()
-    files = args.paths if args.action == 'check' else scan(args.paths[0], args.paths[1:])
+    if args.action == 'scan':
+        files = scan(args.paths[0], args.paths[1:])
+    else:
+        files = [resolve(args.root, path) for path in args.paths] if args.root else args.paths
     failed = False
     for name, outcome, text in check(files):
         if outcome == 'trap':

@@ -36,6 +36,11 @@ without `PT_GNU_STACK`, which is why they work on the player.
   listed in `machine.log` and as `fpu_trap` in `./emulator/run.sh power status`.
 - `python3 -m emulator.runtime.abi check FILE…` is the same check for a build step.
 
+The program path is resolved inside the guest root, links included, as `chroot`
+will. Shared libraries are not judged (a file is a program when it has an
+interpreter or the linker marked it position-independent *executable*), and a
+file that is still being written is reported as unknown rather than failing.
+
 It cannot see a static musl program built with an executable main stack (its
 threads would still trap) or FPU use in a library loaded later. Soft-float
 (`readelf -A`: `FP ABI: Soft float`, no FPU opcodes in the disassembly) remains

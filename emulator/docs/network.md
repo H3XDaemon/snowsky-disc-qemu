@@ -61,6 +61,10 @@ python3 -m emulator.runtime.network shape off
   what the stock ["Reset all"](../../research/docs/reports/reset-all.md) needs.
   No radio is emulated: `wpa_supplicant`, `udhcpc` and interface changes from the
   guest stay blocked. Only dummy links can be changed; the Docker `eth1` cannot.
+  `WLAN0=0` removes the link again; an empty `WLAN0` leaves whatever exists. In a
+  shared guest the link and what was set at runtime outlive a reboot (they belong
+  to the container); a default route (`--gateway`) is refused there, because it
+  would replace the container's own.
 - **`NETWORK=isolated`** boots the guest (either boot mode) in its own network
   namespace with nothing but loopback: a player with no network. Nothing is
   announced and the boot does not wait for the stock listeners. A link added
@@ -74,7 +78,13 @@ python3 -m emulator.runtime.network shape off
   With `wlan0` (or `eth1`) as the only link, stock logged `Interface wlan0: IP
   Address added` and bound 12100 and 12103 three seconds later; the FiiO Link
   handshake answered on that address. In a shared guest that already serves on
-  the Docker `eth1`, stock takes no notice of a second address on `wlan0`. The
+  the Docker `eth1`, stock takes no notice of a second address on `wlan0`.
+  Every boot of an isolated guest starts from a new, empty namespace: give the
+  link again (`WLAN0=1` with `WLAN0_STATE`/`WLAN0_ADDR`, or `link` after boot).
+  The viewer's card removal and insertion work there as well. The namespace is
+  `disc-guest` for `/work/rootfs` and `disc-guest-<hash>` for another rootfs of
+  the same container; `network status` prints it. Returning to `shared` rewrites
+  the `/sys/class/net` stubs from the container's links. The
   published host ports do not reach an isolated guest; `guest_run` enters the
   namespace automatically. `NETWORK=shared` (default) returns to the container's network.
 - **`shape`** limits what the guest sends on the Docker `eth1` (token bucket plus
@@ -82,6 +92,7 @@ python3 -m emulator.runtime.network shape off
   published host ports. Measured between two containers with a 3 MB file:
   unlimited 280 MB/s; `--rate 800kbit --delay 60ms` 95 kB/s over 31.5 s. Uploads
   to the guest are not limited. It is a constant-rate link, not a Wi-Fi model.
+  It acts on a shared guest only; for an isolated guest it is refused.
 
 ### mDNS and the host LAN
 

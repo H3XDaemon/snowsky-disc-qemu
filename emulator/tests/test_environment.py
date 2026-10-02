@@ -72,6 +72,15 @@ class BatteryTests(Base):
         self.assertEqual(self.files()['status'], 'Discharging\n')
         self.assertNotEqual(controls(USB_POWER='yes').returncode, 0)
         self.assertEqual((self.root / 'emu/usb-connected').read_text(), '0')
+        # The jack model is V2.57 data: other profiles refuse it before writing anything.
+        self.assertEqual(controls(JACK='4.4').returncode, 0)
+        self.assertEqual((self.root / 'emu/jack').read_bytes(), b'4')
+        refused = controls(JACK='3.5', FW_VERSION='2.40')
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn(b'V2.57 only', refused.stderr)
+        self.assertEqual((self.root / 'emu/jack').read_bytes(), b'4')
+        self.assertEqual(controls(JACK='off', FW_VERSION='2.40').returncode, 0)
+        self.assertFalse((self.root / 'emu/jack').exists())
 
     def test_update_needs_a_prepared_gauge(self):
         with self.assertRaises(ValueError):
