@@ -24,11 +24,25 @@ wait_listeners(){
 }
 case "${1:-prepare}" in
   prepare)
-    [ -e /sys/class/net/eth1/address ] || {
-      err 'eth1 missing: run docker compose up -d (Compose >= 2.36), then setup/boot'; exit 1;
-    }
-    mkdir -p "$ROOTFS/sys/class/net/eth1" "$ROOTFS/emu/original-commands"
-    cp /sys/class/net/eth1/{address,operstate} "$ROOTFS/sys/class/net/eth1/"
+    mkdir -p "$ROOTFS/emu/original-commands"
+    if guest_netns >/dev/null; then
+      :   # NETWORK=isolated: the guest sees only links made by emulator.runtime.network
+    else
+      [ -e /sys/class/net/eth1/address ] || {
+        err 'eth1 missing: run docker compose up -d (Compose >= 2.36), then setup/boot'; exit 1;
+      }
+      mkdir -p "$ROOTFS/sys/class/net/eth1"
+      cp /sys/class/net/eth1/{address,operstate} "$ROOTFS/sys/class/net/eth1/"
+    fi
+    # WLAN0=1: an emulated Wi-Fi interface (dummy link + sysfs stub). State and address are
+    # applied only when given, so runtime changes survive the next boot (docs/network.md).
+    if [ "${WLAN0:-0}" = 1 ]; then
+      wlan=(link wlan0)
+      [ -z "${WLAN0_STATE:-}" ] || wlan+=(--state "$WLAN0_STATE")
+      [ -z "${WLAN0_ADDR:-}" ] || wlan+=(--addr "$WLAN0_ADDR")
+      [ -z "${WLAN0_MAC:-}" ] || wlan+=(--mac "$WLAN0_MAC")
+      python3 -B -m emulator.runtime.network "${wlan[@]}" >/dev/null
+    fi
     # Preserve originals once, replace paths atomically (never follow BusyBox
     # symlinks with cp: that would overwrite /bin/busybox itself).
     for path in sbin/ip sbin/ifconfig sbin/route sbin/udhcpc sbin/hwclock \

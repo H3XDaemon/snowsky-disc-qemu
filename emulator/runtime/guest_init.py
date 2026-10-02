@@ -104,6 +104,11 @@ class Init:
 
     def boot(self):
         self.sysinit()
+        # On the player the kernel lists the card's partition, and stock finds it with
+        # `blkid | grep /dev/mmcblk0p1` when it mounts the card at start-up. Here both card
+        # nodes are one loop device and /run is new: name the partition in blkid's cache.
+        if (self.root / 'dev/mmcblk0p1').is_block_device():
+            self.run(['/sbin/blkid', '/dev/mmcblk0p1'], timeout=20)
         log('sysinit done; running /etc/init.d/rcS')
         child = self.run(['/etc/init.d/rcS'], timeout=300)
         log('rcS finished' if child else 'rcS still running')

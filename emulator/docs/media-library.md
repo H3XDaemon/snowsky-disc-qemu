@@ -73,6 +73,50 @@ Normal emulator boot **does not send an insertion notification**. This change
 repairs stock hotplug remounting; it does not automatically scan on every boot.
 A future lifecycle command can send a scoped event once startup/UI state is ready.
 
+## Card image options
+
+`10_setup_env.sh` builds the card from the media folder. Three independent
+options make it closer to the player's card (30.9 GiB exFAT, one partition):
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `SDCARD_MB` | content + 32 | Card size in MiB. The image is sparse, so `31642` costs only what is stored. An explicit size also creates a card from an empty folder. |
+| `SDCARD_FS` | `vfat` | `exfat` formats exFAT (needs `exfatprogs` in the image, see `emulator/docker`). Stock mounts either with its own `mount -o iocharset=utf8`. |
+| `SDCARD_PARTITION` | `0` | `1` writes an MBR with one partition at 1 MiB. `/dev/mmcblk0` and `/dev/mmcblk0p1` are then different devices, as on the player. |
+| `SDCARD_KEEP` | `0` | `1` keeps an existing image instead of rebuilding it. |
+
+With `SDCARD_PARTITION=1` the discovery failure described above does not occur:
+stock's `blkid | grep /dev/mmcblk0p1` finds the partition with an empty cache, in
+both libblkid versions of the rootfs (stock's `LD_LIBRARY_PATH` selects the older
+`/usr/lib/libblkid.so.1.0`, which does not read the cache the emulator primes).
+**Stock then mounts the card itself** a moment after `mq_player` starts
+(`mount_storage_dev.c: mount to /tmp/sdcard succeeded`), and on every insertion.
+The emulator's own remount stays as a fallback: it acts only when the card is
+still unmounted four seconds after the UI is up, which is the normal case for
+the default unpartitioned image in a [stock-init](stock-init.md) guest.
+
+The layout is read from the image; `python3 -m emulator.runtime.card show`
+prints it. The viewer's eject and insert work with both layouts.
+
+## Forced removal
+
+The viewer's ordinary eject refuses while the player holds a file open
+(`SD card is busy`), because stock's removal handler deletes the mount point
+directory even after a failed unmount. A **forced** removal is what a hand does:
+
+```sh
+curl -H 'Content-Type: application/json' -d '{"name":"sd","inserted":false,"force":true}' \
+  http://localhost:8080/peripheral
+```
+
+(`Peripherals.set_sd(False, force=True)` from Python.) A busy mount is detached
+from the namespace at once, then stock receives the same `remove` event. Observed
+with a track playing: the removal takes 0.1 s, stock stops playback and closes
+the file, the mount point is empty for its cleanup, and a later insertion is
+mounted by stock with the content unchanged. One difference from hardware
+remains: between the pull and stock's reaction, reads of the already open file
+still succeed instead of failing with an I/O error.
+
 ## USB mass-storage hypothesis
 
 Ghidra's decompilation of `mq_player` mode handler `0x4e5af4`

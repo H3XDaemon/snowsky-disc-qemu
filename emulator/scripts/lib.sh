@@ -41,16 +41,27 @@ kill_guest(){
 # TTL 0 means no limit (coreutils timeout). A guest booted through stock init
 # (BOOT_MODE=init) lives in its own PID/IPC/UTS namespaces: commands join them, so
 # guest pgrep/killall, /proc and message queues agree with the running programs.
+# With NETWORK=isolated the guest also has its own network namespace (both boot modes).
 guest_run(){
-  local ttl="$1" init; shift
+  local ttl="$1" init net enter=(); shift
   local confined=(timeout "$ttl" setpriv
     --bounding-set=-net_admin,-sys_time,-sys_boot,-sys_module,-sys_rawio
     --no-new-privs chroot "$ROOTFS" "$@")
-  if init="$(guest_init_pid)"; then
-    nsenter --target "$init" --pid --ipc --uts -- "${confined[@]}"
+  if net="$(guest_netns)"; then enter+=(--net="/run/netns/$net"); fi
+  if init="$(guest_init_pid)"; then enter+=(--target "$init" --pid --ipc --uts); fi
+  if [ "${#enter[@]}" -gt 0 ]; then
+    nsenter "${enter[@]}" -- "${confined[@]}"
   else
     "${confined[@]}"
   fi
+}
+
+# Name of the guest's own network namespace (NETWORK=isolated), else failure.
+guest_netns(){
+  local name
+  [ -r "$ROOTFS/emu/netns" ] && read -r name < "$ROOTFS/emu/netns" || return 1
+  [ -n "$name" ] && [ -e "/run/netns/$name" ] || return 1
+  printf '%s' "$name"
 }
 
 # PID (as this container sees it) of a live stock-init guest's PID 1, else failure.
@@ -144,9 +155,10 @@ sd_mount(){
      [ "$(findmnt -n -o SOURCE --target "$ROOTFS/tmp/sdcard")" = "$node" ]; then
     umount "$ROOTFS/tmp/sdcard" || { err 'SD source migration busy; stop guest first'; return 1; }
   fi
+  local type; type="$(blkid -o value -s TYPE "$node" 2>/dev/null)"; type="${type:-vfat}"   # vfat or exfat
   mountpoint -q "$ROOTFS/tmp/sdcard" || \
-    guest_run 10 /bin/mount -t vfat -o iocharset=utf8 /dev/mmcblk0p1 /tmp/sdcard
-  mountpoint -q /tmp/sdcard          || mount -t vfat -o iocharset=utf8 "$node" /tmp/sdcard          2>/dev/null || true
+    guest_run 10 /bin/mount -t "$type" -o iocharset=utf8 /dev/mmcblk0p1 /tmp/sdcard
+  mountpoint -q /tmp/sdcard          || mount -t "$type" -o iocharset=utf8 "$node" /tmp/sdcard          2>/dev/null || true
   # Both mmc nodes alias one loop device. Stock blkid enumeration initially
   # caches only mmcblk0, while hotplug runs `blkid | grep /dev/mmcblk0p1`.
   # Probe the partition explicitly so stock remove/add can remount it itself.

@@ -150,6 +150,17 @@ display. Unplugging must restore idle counting. A short native flag check also
 runs in ordinary `full` integration's peripheral stage. Long acceptance status
 is recorded below; no hardware current/charging measurement is implied.
 
+### USB storage mode is not modelled
+
+Entering stock's USB storage mode unmounts the card and configures a USB gadget
+through configfs; leaving it syncs and runs the card remove/add helpers
+([media library](media-library.md#usb-mass-storage-hypothesis)). There is no UDC
+or gadget under qemu-user, and a guest must not mount the VM's configfs, so the
+mode switch cannot be driven here. The card side alone can be approximated with
+the viewer's SD removal and insertion, which give stock the same remove/add
+events. On a player the card's return was observed to answer `0202` only with
+`a60a/0010`; that sequence has not been reproduced in the emulator.
+
 ## Three independent transport timers
 
 | Layer | Policy | What it establishes |

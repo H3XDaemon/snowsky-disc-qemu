@@ -29,6 +29,8 @@ class GuardTests(unittest.TestCase):
 
     def test_ip_read_allowlist_is_not_prefix_based(self):
         self.blocked('ip', 'addr', 'show', 'eth1', 'extra')
+        self.blocked('ip', 'addr', 'show', 'wlan0', 'extra')
+        self.blocked('ip', 'addr', 'show', 'wlan1')
         self.blocked('ip', 'route', 'show', 'default', '; touch /tmp/unwanted')
 
 

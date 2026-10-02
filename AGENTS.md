@@ -157,6 +157,12 @@ Never change the flags of the shared `qemu-mipsel` binfmt entry (other container
 Guest presets are setup/boot variables (`BATTERY_PROFILE`, `DEVICE_SN`, `USB_POWER`,
 `SETTINGS_PROFILE`, `SETTINGS`, `POWER_WATCH`, `GUEST_TTL=0`); see `emulator/docs/environment.md`.
 Defaults must keep producing the original guest. The guest clock cannot be shifted (same page).
+Card: `SDCARD_MB`, `SDCARD_FS=exfat`, `SDCARD_PARTITION=1` (`emulator/runtime/card.py`); with a real
+partition stock mounts the card itself, so do not add another "remount" there. Forced removal is
+`set_sd(False, force=True)`. Network: `WLAN0=1`, `NETWORK=isolated`, `python3 -m emulator.runtime.network`
+(`emulator/docs/network.md`). Stock "Reset all" has no MCU step (`research/docs/reports/reset-all.md`).
+Loop devices are VM-global: always go through `image_loops`/`card.loops`, never `losetup -j` on a
+path that may not exist. In a stock-init guest a netlink port is the player's PID in ITS namespace.
 
 ## Conventions
 

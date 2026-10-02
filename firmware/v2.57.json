@@ -217,7 +217,8 @@
     "storage",
     "awake",
     "stock-init",
-    "environment"
+    "environment",
+    "card-network"
   ],
   "full_scenarios": [
     "library",

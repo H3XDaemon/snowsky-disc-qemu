@@ -8,7 +8,7 @@ case "$name" in
     case "$*" in
       # The standalone firmware ip's address dump fails under qemu 7.2 with
       # EOPNOTSUPP; the stock BusyBox applet successfully reads the same kernel.
-      'route show default'|'addr show eth1') exec /bin/busybox ip "$@" ;;
+      'route show default'|'addr show eth1'|'addr show wlan0') exec /bin/busybox ip "$@" ;;
     esac ;;
   ifconfig)
     [ "$#" -eq 0 ] && exec /bin/busybox ifconfig ;;

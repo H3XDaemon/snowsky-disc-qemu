@@ -117,30 +117,26 @@ if [ -z "$SD_KEEP" ] && [ -d /sdcard ]; then
   # An empty card is valid. grep exits 1 when only the tracked placeholders exist,
   # which used to abort setup under errexit/pipefail before /usr/data was seeded.
   SD_CONTENT="$(find /sdcard -mindepth 1 -maxdepth 1 ! -name README.md ! -name .gitkeep -print -quit)"
+  # An explicit size asks for a card even when the media folder is empty.
+  [ -z "${SDCARD_MB:-}" ] || SD_CONTENT="${SD_CONTENT:-empty}"
 fi
 if [ -n "$SD_CONTENT" ]; then
   if [ -z "$SD_KEEP" ]; then
-  SZ=$(( $(du -sm /sdcard 2>/dev/null | cut -f1) + 32 ))
-  rm -f "$IMG"; truncate -s "${SZ}M" "$IMG"
-  mkfs.vfat -n SNOWSKY "$IMG" >/dev/null 2>&1
-  # Match the guest mount encoding when writing FAT long filenames. The host
-  # default may be iso8859-1, which corrupts UTF-8 paths before the guest sees them.
-  T="$(mktemp -d)"; mount -t vfat -o loop,iocharset=utf8 "$IMG" "$T"
-  cp -r /sdcard/. "$T"/ 2>/dev/null || true
-  rm -f "$T/README.md" "$T/.gitkeep" 2>/dev/null || true
-  sync; umount "$T"; rmdir "$T"
+    # Default: content + 32 MiB of FAT with no partition table. SDCARD_MB sets the size,
+    # SDCARD_FS=exfat the filesystem, SDCARD_PARTITION=1 an MBR with one partition like a
+    # real card (emulator/docs/media-library.md). Long names are written as UTF-8.
+    card=(--source /sdcard --fs "${SDCARD_FS:-vfat}")
+    [ -z "${SDCARD_MB:-}" ] || card+=(--mb "$SDCARD_MB")
+    [ "${SDCARD_PARTITION:-0}" != 1 ] || card+=(--partition)
+    python3 -B -m emulator.runtime.card build "${card[@]}" >/dev/null
   fi
-  LOOP="$(loop_attach "$IMG")"
   # Expose as REAL device nodes (not symlinks): a symlink -> /dev/loop0 can't be resolved from
   # inside the guest's chroot (it has no /dev/loop0), so the guest's own `mount /dev/mmcblk0p1`
-  # would fail. mknod with the loop's major(7)/minor lets the guest mount the FAT directly.
-  MIN="${LOOP##*loop}"
-  rm -f "$ROOTFS/dev/mmcblk0" "$ROOTFS/dev/mmcblk0p1"
-  mknod "$ROOTFS/dev/mmcblk0"   b 7 "$MIN" 2>/dev/null || ln -sf "$LOOP" "$ROOTFS/dev/mmcblk0"
-  mknod "$ROOTFS/dev/mmcblk0p1" b 7 "$MIN" 2>/dev/null || ln -sf "$LOOP" "$ROOTFS/dev/mmcblk0p1"
+  # would fail. mknod with the loop's device numbers lets the guest mount the card directly.
+  LOOP="$(python3 -B -m emulator.runtime.card insert)"
   sd_mount   # mount /dev/mmcblk0p1 -o iocharset=utf8 at rootfs + container /tmp/sdcard (lib.sh)
   [ -z "$SD_KEEP" ] || log "SD: kept the existing card image (SDCARD_KEEP=1)"
-  log "SD: FAT from ./emulator/sdcard on $LOOP (mknod b 7 $MIN) as /dev/mmcblk0p1, mounted at /tmp/sdcard"
+  log "SD: $(python3 -B -m emulator.runtime.card show) on $LOOP as /dev/mmcblk0p1, mounted at /tmp/sdcard"
 else
   rm -f "$ROOTFS/dev/mmcblk0" "$ROOTFS/dev/mmcblk0p1"    # no card
 fi
@@ -186,6 +182,8 @@ if [ ! -f "$DB" ]; then
   for i in $(seq 1 35); do [ -f "$DB" ] && break; sleep 1; done
   kill_guest
   [ -f "$DB" ] && log "  sysconfig.db created" || err "  DB still absent after priming (see $WORK/*.log)"
+  # The priming pair unmounted the card (and may or may not have mounted it again).
+  if sd_node >/dev/null; then sd_mount; fi
 fi
 if [ -f "$DB" ]; then
   # LANGUAGE is a 0-based index (switch in mq_ui FUN_004776e4): 0 zh(简体) 1 tw(繁體) 2 en

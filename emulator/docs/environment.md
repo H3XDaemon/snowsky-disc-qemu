@@ -95,7 +95,7 @@ profile from `emulator/settings/`:
 | Profile | Changes to the stock-created row |
 | --- | --- |
 | `emulator` (default) | `LOCAL_IMG_ANIM=0`, `BATTERY=100`, `LANGUAGE=$LANG_CODE` — straight to the main menu |
-| `factory` | None: the player after a firmware install. `LANGUAGE=100` shows the first-boot language wizard; `LOCAL_IMG_ANIM=1` keeps the boot-logo overlay, which does not clear under emulation ([emulation](emulation.md)) |
+| `factory` | None: the player after a firmware install. `LANGUAGE=100` shows the first-boot language wizard and `LOCAL_IMG_ANIM=1` enables the boot-logo animation. Stock's own "Reset all" writes the same two values ([report](../../research/docs/reports/reset-all.md)) |
 | `always-on` | `emulator` plus `LIGTH_ON_TIME=7` (display never times out) |
 
 `SETTINGS="MEMORY_PLAY=1,POWER_SAVE=0"` adds single integer columns. Unknown

@@ -9,7 +9,7 @@ export FW_VERSION="${FW_VERSION:-$(cat firmware/active-version)}"
 CI_SCENARIO="${CI_SCENARIO:-full}"
 CI_IDLE_PHASE="${CI_IDLE_PHASE:-all}"
 case "$CI_IDLE_PHASE" in all|quiet|power|usb) ;; *) echo 'Unknown CI_IDLE_PHASE' >&2; exit 2;; esac
-case "$CI_SCENARIO" in full|queue|queue-reads|settings|peq|sacd|themes|preferences|playlists|library|library-delete|scan-cancel|library-reset|track-end|formats|discovery|idle|idle-usb|stock-init|environment) ;; *) echo 'Unknown CI_SCENARIO' >&2; exit 2;; esac
+case "$CI_SCENARIO" in full|queue|queue-reads|settings|peq|sacd|themes|preferences|playlists|library|library-delete|scan-cancel|library-reset|track-end|formats|discovery|idle|idle-usb|stock-init|environment|card-network) ;; *) echo 'Unknown CI_SCENARIO' >&2; exit 2;; esac
 if [ "$CI_SCENARIO" = sacd ]; then
   test -f "${CI_SACD_ISO:?sacd requires an explicitly approved local ISO file}"
 fi
@@ -71,6 +71,11 @@ if [ "$CI_SCENARIO" = sacd ]; then
 fi
 compose up -d --no-build --wait --wait-timeout 60
 compose exec -T emulator bash /repo/emulator/scripts/00_extract_rootfs.sh /ota
+if [ "$CI_SCENARIO" = card-network ]; then
+  # 30.9 GiB partitioned exFAT card, forced removal, emulated links, stock Reset all. Own setup.
+  compose exec -T emulator python3 -B -m tests.integration.card_network_check
+  exit 0
+fi
 if [ "$CI_SCENARIO" = environment ]; then
   # Battery/settings/serial/cable presets, unlimited lifetime, headless power-off. Runs its own setups.
   compose exec -T emulator python3 -B -m tests.integration.environment_check
