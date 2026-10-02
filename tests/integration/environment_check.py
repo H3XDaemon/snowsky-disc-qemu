@@ -78,8 +78,11 @@ def main():
 
     # 3. Unlimited lifetime, headless power service, cable present from the first instruction.
     script('20_boot.sh', GUEST_TTL='0', POWER_WATCH='1')
-    limits = [Path(f'/proc/{pid}/cmdline').read_bytes().split(b'\0')[:2] for pid in device.processes()]
-    assert [b'timeout', b'0'] in limits, limits
+    limits = set()
+    for pid in device.processes():                      # each program's parent is its `timeout TTL`
+        parent = Path(f'/proc/{pid}/stat').read_text().split(') ', 1)[1].split()[1]
+        limits.add(tuple(Path(f'/proc/{parent}/cmdline').read_bytes().split(b'\0')[:2]))
+    assert (b'timeout', b'0') in limits and not any(a == b'timeout' and b != b'0' for a, b in limits), limits
     wait(usb_detected, lambda value: value == 1, 'stock did not detect the preset cable', 30)
     log = (WORK / 'mq_player.log').read_bytes()
     assert b'sn_nb.c: 35> open file failed' not in log, 'stock could not read sn.txt'
