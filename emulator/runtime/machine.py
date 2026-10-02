@@ -13,8 +13,10 @@ import signal
 import subprocess
 import sys
 import time
+import traceback
 
 from emulator.runtime import abi, gpio, network
+from emulator.runtime.audio import reset_output
 from emulator.runtime.guest_init import FORCED, REBOOT, mounted, unmount
 
 REPO = Path(__file__).resolve().parents[2]
@@ -220,7 +222,12 @@ class Machine:
         that run here but would die on the player's kernel (emulator/runtime/abi.py)."""
         if os.environ.get('FPU_GUARD', 'reject') == 'off':
             return
-        for name, outcome, text in abi.check(abi.scan(self.root, ('/opt', '/usr/data'))):
+        try:
+            found = abi.check(abi.scan(self.root, ('/opt', '/usr/data')))
+        except OSError as exc:              # a report only: files may change under the scan
+            print(f'[fpu-guard] scan skipped: {exc}', flush=True)
+            return
+        for name, outcome, text in found:
             if outcome == 'trap':
                 self.trapping.append(name[len(str(self.root)):])
                 print(f'[fpu-guard] {text}\n[fpu-guard] {abi.MESSAGE}', flush=True)
@@ -250,24 +257,39 @@ class Machine:
         deadline = time.monotonic() + self.ttl if self.ttl else None
         console_path = self.work / 'console.log'
         reason = 'poweroff'
-        with console_path.open('wb') as console:
-            while True:
-                self.publish('starting')
-                self.power_on(console)
-                self.watch(console_path, deadline)
-                if self.cut:
-                    reason = self.power_cut(*self.cut_request())
-                    break
-                if self.child.returncode != REBOOT:
-                    if self.child.returncode == FORCED:
-                        reason = 'guest poweroff -f'
-                    elif self.child.returncode:
-                        reason = f'init exited with status {self.child.returncode}'
-                    break
-                self.publish('rebooting')
-        gpio.release(self.root)
-        restore_view(self.root)
-        self.publish('off', reason)
+        try:
+            with console_path.open('wb') as console:
+                while True:
+                    self.publish('starting')
+                    self.power_on(console)
+                    self.watch(console_path, deadline)
+                    if self.cut:
+                        reason = self.power_cut(*self.cut_request())
+                        break
+                    if self.child.returncode != REBOOT:
+                        if self.child.returncode == FORCED:
+                            reason = 'guest poweroff -f'
+                        elif self.child.returncode:
+                            reason = f'init exited with status {self.child.returncode}'
+                        break
+                    self.publish('rebooting')
+        except Exception as exc:            # never leave a guest running without its supervisor
+            traceback.print_exc()
+            reason = f'supervisor error: {exc}'
+            try:
+                if self.child and self.child.poll() is None:
+                    self.child.kill()
+                    self.child.wait()
+                kill_guest_tree(self.root)
+            except Exception:
+                traceback.print_exc()
+        finally:
+            for step in (lambda: gpio.release(self.root), lambda: restore_view(self.root),
+                         lambda: reset_output(self.root), lambda: self.publish('off', reason)):
+                try:
+                    step()
+                except Exception:
+                    traceback.print_exc()
 
     def on_cut(self, number, _frame):
         self.cut = self.cut or ('power cut' if number == signal.SIGUSR1 else 'stopped')

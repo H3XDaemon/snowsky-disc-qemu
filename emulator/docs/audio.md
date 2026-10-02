@@ -45,7 +45,10 @@ output_state('/work/rootfs')
 # {'stream': 'RUNNING', 'activity': 'samples', 'format': 'S32_LE', 'rate': 44100, 'channels': 2}
 ```
 
-The viewer's `/audio.json` carries the same object as `output`. A 16-bit 44.1 kHz
+The reader never fails: while the shim replaces the two files it reports the
+settled state, and stopping the guest resets the tree to `closed` (a killed
+player never closes its stream). The viewer's `/audio.json` carries the same
+object as `output`. A 16-bit 44.1 kHz
 file is fed to the DAC as `S32_LE` at 44100 Hz. A silent passage of a track is
 reported as silence too.
 
@@ -62,7 +65,8 @@ about a second of debounce (V2.57, read from the binary and confirmed live):
 The result selects the volume curve, and an **unplug pauses local playback**.
 It does not gate playback: with nothing plugged from boot, stock still plays.
 
-By default the model is off and stock sees unmodelled pins (the `pb20` request
+The model is V2.57 data (`JACK` is refused for another firmware profile). By
+default it is off and stock sees unmodelled pins (the `pb20` request
 fails, the ADC read returns no sample). `JACK=3.5`, `4.4` or `none` at setup or
 boot turns it on; the state is stored. At runtime:
 

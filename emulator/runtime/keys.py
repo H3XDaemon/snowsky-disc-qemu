@@ -8,6 +8,7 @@ import threading
 import time
 
 from emulator.runtime import gpio, machine
+from emulator.runtime.audio import reset_output
 
 BRIGHTNESS = 'sys/bus/platform/drivers/pwm-backlight/backlight/backlight/backlight/brightness'
 CODES = {
@@ -123,6 +124,7 @@ class Device:
                     time.sleep(.5)
                 if self.processes():
                     raise RuntimeError('Some guest processes could not be stopped')
+                reset_output(self.root)     # a killed player never closed its stream
         except Exception as exc:
             self.error = str(exc)
         finally:

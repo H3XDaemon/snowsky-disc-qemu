@@ -19,6 +19,9 @@
 #define __NR_getpid 4020
 #define __NR_rename 4038
 #define O_WCT 0x301   /* MIPS O_WRONLY|O_CREAT|O_TRUNC  */
+#ifndef TINYSHIM_ROOT  /* tests run the shim outside a chroot and prefix its files */
+#define TINYSHIM_ROOT ""
+#endif
 
 static long sys3(long n, long a, long b, long c){
   register long v0 asm("$2")=n, a0 asm("$4")=a, a1 asm("$5")=b, a2 asm("$6")=c;
@@ -38,6 +41,7 @@ static void trace(const char *s){
   sys3(__NR_write, 2, (long)s, n);
 }
 
+#ifndef TINYSHIM_NO_FOPEN
 /* procfs belongs to the host kernel; redirect only the guest's card discovery. */
 extern void *fopen64(const char *, const char *);
 void *fopen(const char *path, const char *mode){
@@ -47,13 +51,16 @@ void *fopen(const char *path, const char *mode){
   if (!path[i] && !card_path[i]) path = "/etc/asound.cards";
   return fopen64(path, mode);
 }
+#endif
 
 /* What a program on the player reads in /proc/asound/card0/pcm3p/sub0: here under
  * /emu/asound (a real procfs cannot be extended), kept in step with the stock stream.
  * Readers never see a half-written file: write beside it, then rename. */
 static void publish(const char *name, const char *text, unsigned n){
-  char path[64] = "/emu/asound/card0/pcm3p/sub0/", fresh[68];
-  unsigned i = 29, k = 0;
+  static const char stream[] = TINYSHIM_ROOT "/emu/asound/card0/pcm3p/sub0/";
+  char path[sizeof stream + 16], fresh[sizeof stream + 20];
+  unsigned i = 0, k = 0;
+  for (; i < sizeof stream - 1; ++i) path[i] = stream[i];
   while (name[k]) path[i++] = name[k++];
   path[i] = 0;
   for (k = 0; k < i; ++k) fresh[k] = path[k];
@@ -98,14 +105,14 @@ static void audible(int state){
   static const char mark[3] = {'c', 's', 'p'};
   if (state == g_audible) return;
   g_audible = state;
-  long fd = sys3(__NR_open, (long)"/emu/audio-state", 1 /* O_WRONLY: fixed-width overwrite */, 0);
+  long fd = sys3(__NR_open, (long)(TINYSHIM_ROOT "/emu/audio-state"), 1 /* O_WRONLY: fixed-width overwrite */, 0);
   if (fd < 0) return;
   sys3(__NR_write, fd, (long)&mark[state], 1);
   sys3(__NR_close, fd, 0, 0);
 }
 
 static int fmt_write(void){
-  long fd = sys3(__NR_open, (long)"/audio.fmt", O_WCT, 0644);
+  long fd = sys3(__NR_open, (long)(TINYSHIM_ROOT "/audio.fmt"), O_WCT, 0644);
   if (fd < 0) return -1;
   unsigned r[3] = {(unsigned)g_ch,(unsigned)g_sb,g_rate};
   long written = sys3(__NR_write,fd,(long)r,sizeof r);
@@ -130,7 +137,7 @@ struct pcm *pcm_open(unsigned card, unsigned device, unsigned flags, const void 
     g_sb = fmt == 0 ? 2 : fmt == 5 ? 3 : 4;
     g_buffer_frames = c[2]*c[3];
     g_period = c[2];
-    g_fd = sys3(__NR_open, (long)"/audio.pcm", O_WCT, 0644);
+    g_fd = sys3(__NR_open, (long)(TINYSHIM_ROOT "/audio.pcm"), O_WCT, 0644);
     if (g_fd < 0) return (struct pcm *)0;
     if (fmt_write() < 0){ sys3(__NR_close,g_fd,0,0); g_fd=-1; return (struct pcm *)0; }
   }

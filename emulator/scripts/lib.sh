@@ -67,11 +67,12 @@ fpu_guard(){
   [ "${FPU_GUARD:-reject}" != off ] || return 0
   if [ "${program##*/}" = qemu-mipsel-static ]; then      # explicit qemu [-0 argv0] PROGRAM
     shift
-    while [ "${1:-}" = -0 ]; do shift 2; done
+    while [ "${1:-}" = -0 ] && [ "$#" -ge 2 ]; do shift 2; done   # a lone trailing -0 is left to qemu
     program="${1:-}"
   fi
   case "$program" in /*) ;; *) return 0 ;; esac
-  python3 -B -m emulator.runtime.abi check "$ROOTFS$program" || [ "${FPU_GUARD:-reject}" = warn ]
+  # --root: links are followed inside the guest, as chroot will.
+  python3 -B -m emulator.runtime.abi check --root "$ROOTFS" "$program" || [ "${FPU_GUARD:-reject}" = warn ]
 }
 
 # Name of the guest's own network namespace (NETWORK=isolated), else failure.
