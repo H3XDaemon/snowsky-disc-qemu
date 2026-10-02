@@ -232,9 +232,16 @@ scenario on its branch head, and the top of the series (`328b2a5`) passed
 
 The series touches the cable state (`USB_POWER`) and idle power-off (the power
 watcher, a stock-init guest's PID 1), so the two long power scenarios of
-`firmware/v2.57.json` matter. They were **not** run during the series; they were
-run afterwards on the follow-up fixes, see the pull request that carries this
-paragraph for the result.
+`firmware/v2.57.json` matter. They were **not** run during the series. They were
+run afterwards, on 2026-10-02, on the merge of the three follow-up branches
+(#42, #43, #44) with `2.x` at `6ed3168`, together with everything above:
+firmware-free suite, `stock-init`, `environment`, `card-network`, `audio-guards`,
+`full`, **`idle`** (TCP and WS lifecycle, natural shutdown, explicit boot) and
+**`idle-usb`** (310 seconds paused with the cable in, unplug restores idle
+counting) all passed. Both power scenarios use the direct boot with default
+presets; idle power-off of a stock-init guest is covered by `stock-init` (guest
+`poweroff -f`) and the empty-battery case by `environment`, not by a 300-second
+idle run in those modes.
 
 ## Revision to pin
 
