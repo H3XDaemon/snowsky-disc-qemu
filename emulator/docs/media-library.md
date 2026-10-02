@@ -80,7 +80,7 @@ options make it closer to the player's card (30.9 GiB exFAT, one partition):
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `SDCARD_MB` | content + 32 | Card size in MiB. The image is sparse, so `31642` costs only what is stored. An explicit size also creates a card from an empty folder. |
+| `SDCARD_MB` | content + 32 | Card size in MiB. The image is sparse, so `31642` costs only what is stored. An explicit size also creates a card from an empty folder. A size too small for the media folder fails the setup instead of producing a short card. |
 | `SDCARD_FS` | `vfat` | `exfat` formats exFAT (needs `exfatprogs` in the image, see `emulator/docker`). Stock mounts either with its own `mount -o iocharset=utf8`. |
 | `SDCARD_PARTITION` | `0` | `1` writes an MBR with one partition at 1 MiB. `/dev/mmcblk0` and `/dev/mmcblk0p1` are then different devices, as on the player. |
 | `SDCARD_KEEP` | `0` | `1` keeps an existing image instead of rebuilding it. |

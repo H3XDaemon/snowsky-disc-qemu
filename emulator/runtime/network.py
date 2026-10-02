@@ -6,13 +6,14 @@
   unlink NAME          remove a dummy interface created here
   isolate | share      give the guest its own empty network namespace, or the container's
   shape [--rate R] [--delay D] [--loss P] | shape off
-        limit what the guest SENDS on the container's eth1 (tc tbf + netem)
+        limit what a shared guest SENDS on the container's eth1 (tc tbf + netem)
   status               JSON
 
 The guest reads interface state in two places: netlink/ioctl (real kernel
 objects, hence the dummy interfaces) and /sys/class/net/<name>/ (stub files in
 the rootfs, kept here). See emulator/docs/network.md.
 """
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -70,14 +71,17 @@ def mirror(root, name):
 def link(root, name, state=None, addr=None, mac=None, gateway=None):
     if not NAME.fullmatch(name) or name == 'lo':
         raise ValueError('Interface name must be like wlan0')
+    if mac and not re.fullmatch(r'([0-9a-f]{2}:){5}[0-9a-f]{2}', mac):
+        raise ValueError('MAC must look like d0:31:10:00:00:01')
+    if gateway and not namespace(root):
+        # In a shared guest the default route is the container's own (Docker's).
+        raise ValueError('--gateway is for an isolated guest; a shared guest keeps the container route')
     current = links(root).get(name)
     if current is not None and not is_dummy(current):
         raise ValueError(f'{name} is a real interface; only emulated (dummy) links are changed here')
     if current is None:
         ip(root, 'link', 'add', name, 'type', 'dummy')
     if mac:
-        if not re.fullmatch(r'([0-9a-f]{2}:){5}[0-9a-f]{2}', mac):
-            raise ValueError('MAC must look like d0:31:10:00:00:01')
         ip(root, 'link', 'set', name, 'address', mac)
     if addr is not None:
         ip(root, 'addr', 'flush', 'dev', name)
@@ -99,34 +103,57 @@ def unlink(root, name):
     mirror(root, name)
 
 
-def isolate(root, name='disc-guest'):
-    """A fresh namespace with only loopback: the guest has no network until a link is added."""
-    root = Path(root)
-    subprocess.run(['ip', 'netns', 'del', name], capture_output=True)
-    subprocess.run(['ip', 'netns', 'add', name], check=True)
-    subprocess.run(['ip', '-n', name, 'link', 'set', 'lo', 'up'], check=True)
-    (root / NAMESPACE).write_text(name + '\n')
-    for stale in (root / 'sys/class/net').glob('*'):     # no interface of the container is visible
+def namespace_name(root):
+    """One namespace per rootfs: several guests may live in one container."""
+    path = str(Path(root).resolve())
+    return 'disc-guest' if path == '/work/rootfs' else 'disc-guest-' + hashlib.sha1(path.encode()).hexdigest()[:8]
+
+
+def clear_stubs(root):
+    for stale in (Path(root) / 'sys/class/net').glob('*'):
         for attribute in ('address', 'operstate'):
             (stale / attribute).unlink(missing_ok=True)
         if not any(stale.iterdir()):
             stale.rmdir()
 
 
+def isolate(root):
+    """A fresh namespace with only loopback: the guest has no network until a link is added."""
+    root = Path(root)
+    name = namespace_name(root)
+    subprocess.run(['ip', 'netns', 'del', name], capture_output=True)
+    subprocess.run(['ip', 'netns', 'add', name], check=True)
+    subprocess.run(['ip', '-n', name, 'link', 'set', 'lo', 'up'], check=True)
+    (root / NAMESPACE).write_text(name + '\n')
+    clear_stubs(root)                         # no interface of the container is visible
+
+
 def share(root):
+    """Back to the container's network; the stubs show ITS links again, not the namespace's."""
     root = Path(root)
     name = namespace(root)
     (root / NAMESPACE).unlink(missing_ok=True)
     if name:
         subprocess.run(['ip', 'netns', 'del', name], capture_output=True)
+    clear_stubs(root)
+    for link_name, item in links(root).items():
+        if is_dummy(item) or link_name == REAL:
+            mirror(root, link_name)
 
 
-def shape(rate=None, delay=None, loss=None):
-    """Egress of the container's interface = what a client downloads from the guest."""
+def bits_per_second(rate):
+    number, unit = re.fullmatch(r'(\d+(?:\.\d+)?)(bit|kbit|mbit|gbit)', rate).groups()
+    return int(float(number) * {'bit': 1, 'kbit': 1000, 'mbit': 1000000, 'gbit': 1000000000}[unit])
+
+
+def shape(root, rate=None, delay=None, loss=None):
+    """Egress of the container's interface = what a client downloads from a shared guest."""
     for value, pattern, label in ((rate, RATE, 'rate like 800kbit'), (delay, DELAY, 'delay like 80ms'),
                                   (loss, LOSS, 'loss like 1%')):
         if value is not None and not pattern.fullmatch(value):
             raise ValueError(f'Expected a {label}')
+    if (rate or delay or loss) and namespace(root):
+        raise ValueError('An isolated guest does not use the Docker interface; nothing to shape')
     subprocess.run(['tc', 'qdisc', 'del', 'dev', REAL, 'root'], capture_output=True)
     if not (rate or delay or loss):
         return
@@ -136,8 +163,11 @@ def shape(rate=None, delay=None, loss=None):
                        (['delay', delay] if delay else []) + (['loss', loss] if loss else []), check=True)
         parent = ['parent', '1:1', 'handle', '10:']
     if rate:
+        # The bucket must hold what the rate sends between two timer ticks, or fast
+        # rates are never reached: 20 ms worth, and never less than a few packets.
+        burst = max(4000, bits_per_second(rate) // 8 // 50)
         subprocess.run(['tc', 'qdisc', 'add', 'dev', REAL, *parent, 'tbf', 'rate', rate,
-                        'burst', '32kbit', 'latency', '400ms'], check=True)
+                        'burst', f'{burst}b', 'latency', '400ms'], check=True)
 
 
 def status(root):
@@ -178,7 +208,7 @@ if __name__ == '__main__':
         elif args.action == 'share':
             share(target)
         elif args.action == 'shape':
-            shape(*(None, None, None) if args.name == 'off' else (args.rate, args.delay, args.loss))
+            shape(target, *(None, None, None) if args.name == 'off' else (args.rate, args.delay, args.loss))
         print(json.dumps(status(target)))
     except (ValueError, subprocess.SubprocessError) as exc:
         parser.exit(1, f'{exc}\n')

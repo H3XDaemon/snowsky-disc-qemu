@@ -13,6 +13,7 @@ import shutil
 import stat
 import struct
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -59,6 +60,7 @@ def attach(path):
     """Attach the image; returns (loop path, whole-card device number, partition device number)."""
     split = partitioned(path)
     attached = loops(path)                    # still attached while a pulled card's file is open
+    mine = not attached
     if attached:
         loop = attached[0]
     else:
@@ -67,20 +69,25 @@ def attach(path):
         if not Path(loop).exists():
             os.mknod(loop, stat.S_IFBLK | 0o660, os.makedev(7, int(loop.rsplit('loop', 1)[1])))
         subprocess.run(['losetup'] + (['-P'] if split else []) + [loop, str(path)], check=True, timeout=10)
-    info = Path(loop).stat()
-    if not stat.S_ISBLK(info.st_mode) or os.major(info.st_rdev) != 7:
-        raise ValueError('Expected a loop device for the SD image')
-    if not split:
-        return loop, info.st_rdev, info.st_rdev
-    name = Path(loop).name
-    entry = Path(f'/sys/block/{name}/{name}p1/dev')
-    deadline = time.monotonic() + 5
-    while not entry.exists():                 # the kernel scans the table asynchronously
-        if time.monotonic() >= deadline:
-            raise ValueError('The kernel did not find the card partition')
-        time.sleep(.05)
-    major, minor = (int(part) for part in entry.read_text().split(':'))
-    return loop, info.st_rdev, os.makedev(major, minor)
+    try:
+        info = Path(loop).stat()
+        if not stat.S_ISBLK(info.st_mode) or os.major(info.st_rdev) != 7:
+            raise ValueError('Expected a loop device for the SD image')
+        if not split:
+            return loop, info.st_rdev, info.st_rdev
+        name = Path(loop).name
+        entry = Path(f'/sys/block/{name}/{name}p1/dev')
+        deadline = time.monotonic() + 5
+        while not entry.exists():             # the kernel scans the table asynchronously
+            if time.monotonic() >= deadline:
+                raise ValueError('The kernel did not find the card partition')
+            time.sleep(.05)
+        major, minor = (int(part) for part in entry.read_text().split(':'))
+        return loop, info.st_rdev, os.makedev(major, minor)
+    except (OSError, ValueError):
+        if mine:                              # never leave a loop device behind a failed attach
+            subprocess.run(['losetup', '-d', loop], check=False)
+        raise
 
 
 def detach(path):
@@ -130,29 +137,47 @@ def build(root, source, size_mb=None, filesystem='vfat', partition=False):
         file.truncate(size_mb << 20)          # sparse: a 31 GiB card costs what it holds
         if partition:
             file.write(mbr((size_mb << 20) // SECTOR, filesystem))
-    loop, _, part = attach(path)
     workspace = Path(tempfile.mkdtemp())
-    node = workspace / 'card'
+    node, mount, loop = workspace / 'card', workspace / 'mount', None
     try:
+        loop, _, part = attach(path)
         os.mknod(node, stat.S_IFBLK | 0o600, part)
         maker = ['mkfs.vfat', '-n', LABEL] if filesystem == 'vfat' else ['mkfs.exfat', '-L', LABEL]
         subprocess.run(maker + [str(node)], check=True, capture_output=True)
-        mount = workspace / 'mount'
         mount.mkdir()
         # The guest mounts with iocharset=utf8: write long names the same way, or a host
         # default of iso8859-1 corrupts UTF-8 paths before the guest sees them.
         subprocess.run(['mount', '-t', filesystem, '-o', 'iocharset=utf8', str(node), str(mount)], check=True)
         try:
-            subprocess.run(['cp', '-r', f'{source}/.', f'{mount}/'], check=False, capture_output=True)
+            copied = subprocess.run(['cp', '-r', f'{source}/.', f'{mount}/'], capture_output=True, text=True)
+            if copied.returncode:
+                space = os.statvfs(mount)
+                if 'No space left' in copied.stderr or space.f_bavail * space.f_frsize < 1 << 20:
+                    raise ValueError(f'SDCARD_MB={size_mb} is too small for the media folder')
+                # Names the filesystem cannot hold were always skipped; say which.
+                print('card: some files were not copied:\n' + copied.stderr.strip()[:2000], file=sys.stderr)
             for name in SKIP:
                 (mount / name).unlink(missing_ok=True)
             os.sync()
         finally:
             subprocess.run(['umount', str(mount)], check=True)
+    except BaseException:
+        if loop:
+            subprocess.run(['losetup', '-d', loop], check=False)
+            loop = None
+        if not os.path.ismount(mount):
+            path.unlink(missing_ok=True)      # no half-built card
+        raise
     finally:
-        node.unlink(missing_ok=True)
-        shutil.rmtree(workspace, ignore_errors=True)
-        subprocess.run(['losetup', '-d', loop], check=False)
+        # Only what was created here, and never recursively: if the unmount failed the
+        # card is still mounted below this directory.
+        for leftover in (node, mount, workspace):
+            try:
+                leftover.unlink() if leftover == node else leftover.rmdir()
+            except OSError:
+                pass
+        if loop:
+            subprocess.run(['losetup', '-d', loop], check=False)
     return dict(size_mb=size_mb, filesystem=filesystem, partitioned=partition)
 
 

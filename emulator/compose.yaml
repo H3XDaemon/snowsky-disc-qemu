@@ -30,7 +30,7 @@ services:
       USERDATA_MB: ${USERDATA_MB:-}     # set once (e.g. 83) to make /usr/data a size-limited image
       SDCARD_KEEP: ${SDCARD_KEEP:-0}    # 1 = setup keeps the existing card image
       NETWORK: ${NETWORK:-shared}       # shared, or isolated = own namespace with no interface
-      WLAN0: ${WLAN0:-0}                # 1 = emulated wlan0 (dummy link); WLAN0_STATE/_ADDR/_MAC
+      WLAN0: ${WLAN0:-}                 # 1 = emulated wlan0 (dummy link), 0 = remove it, empty = leave as is
       WLAN0_STATE: ${WLAN0_STATE:-}
       WLAN0_ADDR: ${WLAN0_ADDR:-}
       WLAN0_MAC: ${WLAN0_MAC:-}
