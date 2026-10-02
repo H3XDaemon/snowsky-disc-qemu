@@ -92,6 +92,20 @@ class MachineTests(unittest.TestCase):
         self.assertIsNone(device.transition)
         self.assertEqual((self.root / 'emu/power-request').read_bytes(), b'1')
 
+    def test_supervisor_failure_stops_the_guest_and_restores_the_view(self):
+        board = machine.Machine(self.root)
+        with patch.object(board, 'power_on', side_effect=RuntimeError('boom')), \
+                patch('emulator.runtime.machine.kill_guest_tree') as kill, \
+                patch('emulator.runtime.machine.restore_view') as restore, \
+                patch('emulator.runtime.machine.gpio.release'), \
+                patch('emulator.runtime.machine.signal.signal'), \
+                patch('emulator.runtime.machine.traceback.print_exc'):
+            board.run()
+        kill.assert_called_once()
+        restore.assert_called_once()
+        state = machine.state(self.root)
+        self.assertEqual((state['state'], state['reason']), ('off', 'supervisor error: boom'))
+
     def test_cut_request_carries_reason_and_unsynced_flag(self):
         board = machine.Machine(self.root)
         board.on_cut(signal.SIGUSR1, None)

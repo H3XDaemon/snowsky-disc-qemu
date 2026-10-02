@@ -42,6 +42,11 @@ case "${USB_POWER:-}" in
 esac
 # JACK=3.5|4.4|none turns the analog-output model on and sets what is plugged; off removes
 # it (stock then sees the original unmodelled pins); empty keeps the stored state.
+# pb20 and the ADC channel 2 thresholds were read from the V2.57 player; the ADC nodes and
+# their enable ioctl exist only for profiles with the reviewed power ABI.
+case "${JACK:-}" in
+  3.5|4.4|none) firmware_supports usb_power || { err "JACK is reviewed for V2.57 only"; exit 1; } ;;
+esac
 case "${JACK:-}" in
   3.5) printf '3' > "$ROOTFS/emu/jack" ;;
   4.4) printf '4' > "$ROOTFS/emu/jack" ;;
