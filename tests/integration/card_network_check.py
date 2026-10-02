@@ -170,9 +170,15 @@ def check_links():
         except ValueError:
             continue
         raise AssertionError(f'{name} must not be editable')
-    network.shape(rate='800kbit', delay='60ms')
+    try:
+        network.link(ROOT, 'wlan0', gateway='10.203.0.1')              # would replace the container's route
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('a shared guest must not take a gateway')
+    network.shape(ROOT, rate='800kbit', delay='60ms')
     assert len(network.status(ROOT)['shaping']) == 2
-    network.shape()
+    network.shape(ROOT)
     assert network.status(ROOT)['shaping'] == []
 
 
@@ -202,7 +208,7 @@ def check_isolated(device):
     script('25_power.sh', 'off')
     shell('userdata_mount; ROOTFS="$ROOTFS" python3 -B -m emulator.runtime.settings apply')
     script('25_power.sh', 'on', BOOT_MODE='init', NETWORK='isolated')
-    assert network.namespace(ROOT) == 'disc-guest'
+    assert network.namespace(ROOT) == network.namespace_name(ROOT) == 'disc-guest'
     listeners = lambda scope: subprocess.run(  # noqa: E731
         scope + ['ss', '-H', '-lnt'], capture_output=True, text=True).stdout.count(':1210')
     assert listeners([]) == 0, 'an isolated guest must not listen in the container'
@@ -216,10 +222,30 @@ def check_isolated(device):
                                      'with Client(host="192.0.2.2", timeout=8) as c:\n    c.handshake()'],
                            capture_output=True, text=True, cwd='/repo')
     assert probe.returncode == 0, probe.stderr
+    # The player's uevent socket lives in that namespace too: the card still comes and goes.
+    controls = Peripherals(device)
+    before = digests()
+    for inserted in (False, True):
+        controls.set_sd(inserted)
+        settle(controls)
+        assert controls.error is None and os.path.ismount(CARD) == inserted, controls.snapshot()
+    wait(digests, lambda now: now == before, 'card content changed across removal in an isolated guest', 20)
+    try:
+        network.shape(ROOT, rate='1mbit')
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('shaping has nothing to act on in an isolated guest')
+    assert (ROOT / 'sys/class/net/wlan0/operstate').read_text() == 'up\n'
     script('25_power.sh', 'off')
     script('20_boot.sh', BOOT_MODE='direct', NETWORK='shared')     # back to the container's network
     assert network.namespace(ROOT) is None and device.running()
     assert listeners([]) == 2
+    # The stubs describe the container's links again: its wlan0 was left down in check_links.
+    assert (ROOT / 'sys/class/net/wlan0/operstate').read_text() == 'down\n'
+    assert (ROOT / 'sys/class/net/eth1/operstate').read_text().strip() == 'up'
+    script('16_network.sh', 'prepare', WLAN0='0')                  # an explicit 0 removes the emulated link
+    assert 'wlan0' not in network.status(ROOT)['links'] and not (ROOT / 'sys/class/net/wlan0').exists()
 
 
 def main():

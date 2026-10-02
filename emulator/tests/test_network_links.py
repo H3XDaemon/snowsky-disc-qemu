@@ -47,10 +47,9 @@ class LinkTests(unittest.TestCase):
     def test_dummy_link_is_created_and_its_stub_follows_the_requested_state(self):
         network.link(self.root, 'wlan0', mac='d0:31:10:aa:bb:cc')
         self.assertEqual(self.stub('wlan0'), {'address': 'd0:31:10:aa:bb:cc\n', 'operstate': 'down\n'})
-        network.link(self.root, 'wlan0', state='up', addr='10.0.0.2/24', gateway='10.0.0.1')
+        network.link(self.root, 'wlan0', state='up', addr='10.0.0.2/24')
         self.assertEqual(self.stub('wlan0')['operstate'], 'up\n')        # a dummy reports "unknown"
         self.assertIn(('addr', 'add', '10.0.0.2/24', 'dev', 'wlan0'), self.calls)
-        self.assertIn(('route', 'replace', 'default', 'via', '10.0.0.1', 'dev', 'wlan0'), self.calls)
         self.assertEqual(self.calls.count(('link', 'add', 'wlan0', 'type', 'dummy')), 1)
         network.link(self.root, 'wlan0', addr='none')
         self.assertEqual(self.calls[-1], ('addr', 'flush', 'dev', 'wlan0'))
@@ -65,24 +64,62 @@ class LinkTests(unittest.TestCase):
                      lambda: network.link(self.root, 'WLAN0')):
             with self.assertRaises(ValueError):
                 call()
-        self.assertEqual(self.calls, [])
         with self.assertRaises(ValueError):
             network.link(self.root, 'wlan0', mac='not-a-mac')
+        with self.assertRaisesRegex(ValueError, 'isolated'):             # the container's own default route
+            network.link(self.root, 'wlan0', state='up', gateway='10.0.0.1')
+        self.assertEqual(self.calls, [])
         for bad in (dict(rate='fast'), dict(delay='soon'), dict(loss='1'), dict(rate='800kbit; reboot')):
             with patch('emulator.runtime.network.subprocess.run') as run, self.assertRaises(ValueError):
-                network.shape(**bad)
+                network.shape(self.root, **bad)
             run.assert_not_called()
+
+    def test_gateway_and_shaping_follow_the_network_mode(self):
+        with patch.object(network, 'namespace', return_value='disc-guest'):
+            network.link(self.root, 'wlan0', state='up', addr='192.0.2.2/24', gateway='192.0.2.1')
+            self.assertIn(('route', 'replace', 'default', 'via', '192.0.2.1', 'dev', 'wlan0'), self.calls)
+            with patch('emulator.runtime.network.subprocess.run') as run:
+                with self.assertRaisesRegex(ValueError, 'isolated'):
+                    network.shape(self.root, rate='1mbit')
+                run.assert_not_called()
+                network.shape(self.root)                                  # clearing is always allowed
+                self.assertEqual(run.call_count, 1)
+
+    def test_share_shows_the_containers_links_again(self):
+        stale = self.root / 'sys/class/net/wlan0'
+        stale.mkdir(parents=True)
+        (stale / 'operstate').write_text('up\n')                         # left by an isolated session
+        (stale / 'address').write_text('d0:31:10:00:00:09\n')
+        (self.root / 'emu/netns').write_text('gone\n')
+        with patch('emulator.runtime.network.subprocess.run'):
+            network.share(self.root)
+        self.assertFalse((self.root / 'emu/netns').exists())
+        self.assertIsNone(self.stub('wlan0'))                             # the container has no wlan0
+        self.assertEqual(self.stub('eth1'), {'address': '02:42:ac:11:00:02\n', 'operstate': 'up\n'})
+        self.links['wlan0'] = dict(WLAN)
+        with patch('emulator.runtime.network.subprocess.run'):
+            network.share(self.root)
+        self.assertEqual(self.stub('wlan0')['operstate'], 'down\n')
+
+    def test_one_namespace_per_rootfs(self):
+        self.assertEqual(network.namespace_name('/work/rootfs'), 'disc-guest')
+        other = network.namespace_name(self.root)
+        self.assertRegex(other, r'^disc-guest-[0-9a-f]{8}$')
+        self.assertNotEqual(other, network.namespace_name(self.root / 'second'))
 
     def test_shape_builds_delay_then_rate_and_off_only_clears(self):
         with patch('emulator.runtime.network.subprocess.run') as run:
-            network.shape(rate='800kbit', delay='60ms', loss='1%')
+            network.shape(self.root, rate='800kbit', delay='60ms', loss='1%')
             commands = [call.args[0] for call in run.call_args_list]
             self.assertEqual(commands[0], ['tc', 'qdisc', 'del', 'dev', 'eth1', 'root'])
             self.assertEqual(commands[1][-5:], ['netem', 'delay', '60ms', 'loss', '1%'])
             self.assertEqual(commands[2][5:9], ['parent', '1:1', 'handle', '10:'])
-            self.assertIn('800kbit', commands[2])
+            self.assertEqual(commands[2][-6:], ['rate', '800kbit', 'burst', '4000b', 'latency', '400ms'])
             run.reset_mock()
-            network.shape()
+            network.shape(self.root, rate='100mbit')                      # the bucket grows with the rate
+            self.assertIn('250000b', run.call_args_list[-1].args[0])
+            run.reset_mock()
+            network.shape(self.root)
             self.assertEqual([call.args[0] for call in run.call_args_list],
                              [['tc', 'qdisc', 'del', 'dev', 'eth1', 'root']])
 

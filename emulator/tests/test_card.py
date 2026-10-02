@@ -54,6 +54,63 @@ class CardTests(unittest.TestCase):
                 card.build(self.root, source, size, filesystem)
         self.assertEqual(path.read_bytes(), b'existing card')
 
+    def test_loops_of_a_missing_image_are_never_looked_up_by_name(self):
+        with patch('emulator.runtime.card.subprocess.run') as run:
+            self.assertEqual(card.loops(self.work / 'absent.img'), [])   # would name another container's loop
+            run.assert_not_called()
+            run.return_value.stdout = '/dev/loop7: [0]:1 (/work/sdcard.img)\n'
+            (self.work / 'sdcard.img').touch()
+            self.assertEqual(card.loops(self.work / 'sdcard.img'), ['/dev/loop7'])
+
+    def build(self, failing):
+        """card.build with every external command recorded; `failing` names the one that fails."""
+        source = self.work / 'media'
+        source.mkdir(exist_ok=True)
+        seen = {}
+
+        def run(command, **options):
+            seen.setdefault(command[0], []).append(command)
+            if command[0] == 'mount':
+                (Path(command[-1]) / 'copied.wav').write_text('on the card')   # what a mounted card holds
+            if command[0] == failing:
+                if options.get('check'):
+                    raise subprocess.CalledProcessError(32, command)
+                return subprocess.CompletedProcess(command, 1, '', 'cp: No space left on device')
+            return subprocess.CompletedProcess(command, 0, '', '')
+
+        with patch('emulator.runtime.card.subprocess.run', side_effect=run), \
+                patch('emulator.runtime.card.attach', return_value=('/dev/loop9', 1, 1)), \
+                patch('emulator.runtime.card.os.mknod', side_effect=lambda path, *_: Path(path).touch()), \
+                patch('emulator.runtime.card.tempfile.mkdtemp', return_value=str(self.work / 'build')), \
+                patch('emulator.runtime.card.os.path.ismount', return_value=failing == 'umount'):
+            (self.work / 'build').mkdir()
+            try:
+                card.build(self.root, source, 64)
+            except (ValueError, subprocess.CalledProcessError) as exc:
+                return seen, exc
+            return seen, None
+
+    def test_failed_unmount_never_deletes_what_is_on_the_card(self):
+        seen, error = self.build('umount')
+        self.assertIsInstance(error, subprocess.CalledProcessError)
+        self.assertEqual((self.work / 'build/mount/copied.wav').read_text(), 'on the card')
+        self.assertTrue(card.image(self.root).exists())                    # still mounted: left alone
+        self.assertEqual(seen['losetup'], [['losetup', '-d', '/dev/loop9']])
+
+    def test_too_small_a_card_is_an_error_not_a_silently_short_card(self):
+        seen, error = self.build('cp')
+        self.assertIsInstance(error, ValueError)
+        self.assertIn('too small', str(error))
+        self.assertFalse(card.image(self.root).exists())                   # no half-built card
+        self.assertIn(['losetup', '-d', '/dev/loop9'], seen['losetup'])
+        self.assertEqual(len(seen['umount']), 1)
+
+    def test_successful_build_leaves_no_workspace(self):
+        seen, error = self.build('nothing')
+        self.assertIsNone(error)
+        self.assertEqual(len(seen['losetup']), 1)
+        (self.work / 'build/mount/copied.wav').unlink()                    # the fake card's content
+
     def test_forced_removal_detaches_a_busy_mount_and_plain_removal_refuses(self):
         controls = Peripherals(Device(self.root))
         mount = self.root / 'tmp/sdcard'
