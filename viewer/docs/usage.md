@@ -89,6 +89,9 @@ detached by `./emulator/run.sh view`) and serves:
 | `GET /swipe?dir=down\|up\|back\|left` (or `?x0&y0&x1&y1`) | server-side smooth swipe |
 | `POST /button` JSON `{name, gesture}` | physical-button gesture; see [KEYS.md](../../emulator/docs/keys.md) |
 | `POST /peripheral` JSON `{name:"sd", inserted:bool}` or `{name:"usb", connected:bool}` | same-origin SD hotplug / USB charging simulation |
+| `POST /peripheral` JSON `{name:"sd", inserted:false, force:true}` | pull the card while a track is open ([forced removal](../../emulator/docs/media-library.md#forced-removal)) |
+| `POST /peripheral` JSON `{name:"jack", state:"3.5"\|"4.4"\|"none"\|"off"}` | [analog-output model](../../emulator/docs/audio.md#analog-output-jack-model) |
+| `POST /peripheral` JSON `{name:"boot_keys", keys:[...]}` | keys held at the next power-on ([keys](../../emulator/docs/keys.md#keys-held-at-power-on)) |
 | `GET /device.json` | guest power, screen, backlight, peripherals and transition state |
 | `GET /events` | SSE `device` snapshots on connection and state changes; idle heartbeat every 15 seconds |
 | `GET /key?k=volume_up\|volume_down\|play_pause\|power` (or safe `?code=<int>`) | diagnostic single stock key event; use POST for power lifecycle |
