@@ -9,6 +9,9 @@ Verified stock network commands for gain, DRE, filter, SPDIF and user PEQ are in
 and database enums. Disposable V2.40/V2.57 tests check both network readback and
 persisted configuration through TCP and WS.
 
+Setup presets (named settings profiles, single-column overrides, battery, serial
+number) are described in [guest environment presets](environment.md).
+
 ## Storage and when changes take effect
 
 | Location inside the guest | Purpose | How to change |

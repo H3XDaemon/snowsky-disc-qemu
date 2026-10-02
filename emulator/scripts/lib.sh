@@ -30,7 +30,10 @@ apply_ulimits(){
 
 # Stop only processes chrooted into this guest, including its popen children.
 # Do not pkill every qemu process: another rootfs may be running in this container.
-kill_guest(){ ROOTFS="$ROOTFS" python3 -m emulator.runtime.keys stop; }
+kill_guest(){
+  ROOTFS="$ROOTFS" python3 -m emulator.runtime.power_watch stop >/dev/null   # no-op unless POWER_WATCH started one
+  ROOTFS="$ROOTFS" python3 -m emulator.runtime.keys stop
+}
 
 # qemu-user shares the Docker VM kernel. Firmware children must not reconfigure
 # interfaces, set wall/RTC clocks, reboot the VM, or load modules. Keep SYS_ADMIN

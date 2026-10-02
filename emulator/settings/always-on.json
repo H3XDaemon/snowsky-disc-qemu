@@ -1,0 +1,4 @@
+{
+  "description": "The default profile with the display never timing out (LIGTH_ON_TIME index 7), for long protocol sessions. Idle power-off (POWER_SAVE) is left at stock.",
+  "sysconfig": {"LOCAL_IMG_ANIM": 0, "BATTERY": 100, "LANGUAGE": "${LANG_CODE:-2}", "LIGTH_ON_TIME": 7}
+}

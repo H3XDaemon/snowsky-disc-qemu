@@ -1,0 +1,4 @@
+{
+  "description": "Default: straight to the main menu. No boot-logo overlay, the language of LANG_CODE (which also skips the first-boot wizard), gauge at 100%.",
+  "sysconfig": {"LOCAL_IMG_ANIM": 0, "BATTERY": 100, "LANGUAGE": "${LANG_CODE:-2}"}
+}

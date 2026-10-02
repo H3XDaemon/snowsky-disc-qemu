@@ -13,6 +13,8 @@
 #                                        power events without rebuilding /usr/data or the card
 #   ./emulator/run.sh keys <hold|release|arm|show> [KEYS]
 #                                        key pin levels; arm = held from the next power-on
+#   ./emulator/run.sh battery <show|set> [--capacity N] [--voltage UV] [--temp T]
+#   ./emulator/run.sh settings <list|show|apply> [--profile NAME] [--set COLUMN=INT,...]
 #   ./emulator/run.sh tap <x> <y>        inject a tap and capture PNGs
 #   ./emulator/run.sh view [port]        start the live viewer (default :8080)
 #   ./emulator/run.sh capture [prefix]   capture the current framebuffer
@@ -132,6 +134,14 @@ case "$cmd" in
     need_service
     compose exec -T emulator python3 -B -m emulator.runtime.gpio "$@"
     ;;
+  battery)
+    need_service
+    compose exec -T emulator python3 -B -m emulator.runtime.battery "$@"
+    ;;
+  settings)
+    need_service
+    compose exec -T emulator python3 -B -m emulator.runtime.settings "$@"
+    ;;
   tap)
     need_service
     compose exec -T emulator bash /repo/emulator/scripts/30_tap.sh "${1:?x}" "${2:?y}"
@@ -170,6 +180,6 @@ case "$cmd" in
   down) OTA_DIR="${OTA_DIR:-$REPO_DIR}" compose --profile wsbridge down; echo 'containers removed (work volume kept)';;
   nuke) OTA_DIR="${OTA_DIR:-$REPO_DIR}" compose --profile wsbridge down -v; echo 'containers and work volume removed';;
   compose) compose "$@";;
-  help|--help|-h) sed -n '2,28p' "$EMULATOR_DIR/run.sh";;
+  help|--help|-h) sed -n '2,30p' "$EMULATOR_DIR/run.sh";;
   *) echo "Unknown command: $cmd; see ./emulator/run.sh help" >&2; exit 2;;
 esac
