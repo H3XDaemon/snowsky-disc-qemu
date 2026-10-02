@@ -77,6 +77,9 @@ def check_output_stream(device):
         wait(lambda: output_state(ROOT), lambda now: now['activity'] == 'samples', 'resume not audible')
         buttons.gesture('play_pause', 'single')
         wait(lambda: output_state(ROOT), lambda now: now['activity'] == 'silence', 'second pause still audible')
+    # Stopping the guest kills a player that never closes its stream: the report must not stay RUNNING.
+    script('99_stop.sh')
+    assert output_state(ROOT) == dict(stream='closed', activity='closed', format=None, rate=None, channels=None)
 
 
 def jack_flags():

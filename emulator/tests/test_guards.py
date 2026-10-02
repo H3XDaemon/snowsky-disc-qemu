@@ -5,6 +5,7 @@ import struct
 import subprocess
 import tempfile
 import unittest
+import unittest.mock
 
 from emulator.runtime import abi
 
@@ -14,10 +15,13 @@ STATIC = ['mipsel-linux-gnu-gcc', '-static', '-nostdlib', '-mabi=32', '-march=mi
           '-mno-abicalls', '-O1']
 
 
-def elf(fp_abi=None, interpreter=None, stack=None, machine=8):
+def elf(fp_abi=None, interpreter=None, stack=None, machine=8, kind=2, pie=None):
     """A minimal ELF32 LE header with the program headers the guard reads."""
     segments, blob = [], b''
-    base = 52 + 32 * 3
+    base = 52 + 32 * 4
+    if pie is not None:                               # PT_DYNAMIC with or without DF_1_PIE
+        segments.append((2, base + len(blob), 16, 6))
+        blob += struct.pack('<IIII', 0x6ffffffb, 0x08000000 if pie else 1, 0, 0)
     if interpreter:
         segments.append((3, base + len(blob), len(interpreter) + 1, 4))
         blob += interpreter.encode() + b'\0'
@@ -26,10 +30,10 @@ def elf(fp_abi=None, interpreter=None, stack=None, machine=8):
     if fp_abi is not None:
         segments.append((0x70000003, base + len(blob), 24, 4))
         blob += bytes([0, 0, 32, 2, 1, 0, 0, fp_abi]) + bytes(16)
-    header = b'\x7fELF\x01\x01\x01' + bytes(9) + struct.pack('<HHIIIIIHHHHHH', 2, machine, 1, 0x400000, 52, 0, 0,
+    header = b'\x7fELF\x01\x01\x01' + bytes(9) + struct.pack('<HHIIIIIHHHHHH', kind, machine, 1, 0x400000, 52, 0, 0,
                                                              52, 32, len(segments), 40, 0, 0)
-    table = b''.join(struct.pack('<8I', kind, offset, 0, 0, size, size, flags, 4)
-                     for kind, offset, size, flags in segments).ljust(96, b'\0')
+    table = b''.join(struct.pack('<8I', segment, offset, 0, 0, size, size, flags, 4)
+                     for segment, offset, size, flags in segments).ljust(128, b'\0')
     return header + table + blob
 
 
@@ -63,6 +67,50 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(abi.verdict(abi.inspect(self.write('x86', elf(fp_abi=1, machine=62)))), 'ok')
         self.assertEqual(abi.verdict(abi.inspect(self.write('script', b'#!/bin/sh\n'))), 'ok')
         self.assertIsNone(abi.inspect(self.root / 'absent'))
+
+    def test_truncated_files_never_raise_and_stay_unknown(self):
+        whole = elf(fp_abi=5, interpreter='/lib/ld-linux-mipsn8.so.1', stack=False)
+        for size in range(0, len(whole) + 1):                          # every prefix an installer may leave
+            facts = abi.inspect(self.write('partial', whole[:size]))
+            self.assertIn(abi.verdict(facts), ('ok', 'unknown', 'trap'))
+        cut = abi.inspect(self.write('partial', whole[:-24]))          # ABI flags segment past the end
+        self.assertEqual((cut['fp_abi'], abi.verdict(cut)), (None, 'unknown'))
+
+    def test_shared_libraries_are_not_programs_but_static_pie_is(self):
+        library = self.write('usr/data/lib/libx.so', elf(fp_abi=5, stack=False, kind=3, pie=False))
+        static_pie = self.write('usr/data/bin/tool', elf(fp_abi=5, stack=False, kind=3, pie=True))
+        self.assertTrue(abi.inspect(library)['library'])
+        self.assertEqual(abi.verdict(abi.inspect(library)), 'ok')
+        self.assertEqual(abi.verdict(abi.inspect(static_pie)), 'trap')
+        found = sorted((Path(name).name, outcome) for name, outcome, _ in abi.check(abi.scan(self.root, ['/usr/data'])))
+        self.assertEqual(found, [('libx.so', 'ok'), ('tool', 'trap')])
+
+    def test_guest_links_are_followed_inside_the_guest_root(self):
+        self.write('usr/data/real', elf(fp_abi=5, stack=False))
+        (self.root / 'opt').mkdir()
+        (self.root / 'opt/absolute').symlink_to('/usr/data/real')       # absolute: the GUEST's /usr/data
+        (self.root / 'opt/relative').symlink_to('../usr/data/real')
+        (self.root / 'opt/loop').symlink_to('/opt/loop')
+        for name in ('/opt/absolute', '/opt/relative', '/opt/../usr/data/./real'):
+            self.assertEqual(abi.resolve(self.root, name), self.root / 'usr/data/real')
+        abi.resolve(self.root, '/opt/loop')                              # terminates
+        self.assertEqual(self.guest_run('/opt/absolute').returncode, 126)
+        self.assertEqual(self.guest_run('/emu/qemu-mipsel-static', '-0').returncode, 0)   # malformed: no hang
+
+    def test_supervisor_scan_reports_traps_and_survives_bad_files(self):
+        from emulator.runtime.machine import Machine
+        self.write('usr/data/bin/tool', elf(fp_abi=5, stack=False))
+        self.write('usr/data/lib/libx.so', elf(fp_abi=5, stack=False, kind=3, pie=False))
+        self.write('opt/half', elf(fp_abi=5, stack=False)[:60])
+        self.write('opt/soft', elf(fp_abi=3, stack=False))
+        board = Machine(self.root)
+        with unittest.mock.patch.object(board, 'publish') as publish, \
+                unittest.mock.patch.dict(os.environ, {'FPU_GUARD': 'reject'}):
+            board.fpu_scan()
+        self.assertEqual(board.trapping, ['/usr/data/bin/tool'])
+        publish.assert_called_once_with('running')
+        with unittest.mock.patch('emulator.runtime.machine.abi.scan', side_effect=OSError('gone')):
+            board.fpu_scan()                                             # logged, not raised
 
     def test_real_programs_from_the_cross_toolchain(self):
         soft, hard = self.root / 'emu/soft', self.root / 'emu/hard'

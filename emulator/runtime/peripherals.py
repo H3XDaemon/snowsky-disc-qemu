@@ -99,10 +99,10 @@ class Peripherals:
 
         Stock polls three times a second and debounces about a second."""
         path = self.root / 'emu/jack'
-        if state == 'off':
+        if isinstance(state, str) and state == 'off':
             path.unlink(missing_ok=True)
             return
-        if state not in self.JACKS:
+        if not isinstance(state, str) or state not in self.JACKS:
             raise ValueError('Expected jack 3.5, 4.4, none or off')
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open('r+b' if path.exists() else 'wb') as marker:     # no empty-file interval
