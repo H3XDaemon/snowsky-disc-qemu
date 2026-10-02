@@ -37,6 +37,19 @@ class PeripheralTests(unittest.TestCase):
             self.assertEqual(path.read_text(), 'Discharging\n')
             event.assert_not_called()
 
+    def test_boot_keys_are_armed_for_the_next_power_on_only(self):
+        (self.root / 'emu').mkdir()
+        self.assertEqual(self.controls.snapshot()['boot_keys'], [])
+        self.controls.set_boot_keys(['play', 'volume_up'])
+        self.assertEqual(self.controls.snapshot()['boot_keys'], ['play_pause', 'volume_up'])
+        self.assertFalse((self.root / 'dev/mem').exists())             # no pin moves before power-on
+        for value in ('volume_up', None, [1], ['power']):
+            with self.assertRaises(ValueError):
+                self.controls.set_boot_keys(value)
+        self.assertEqual(self.controls.snapshot()['boot_keys'], ['play_pause', 'volume_up'])
+        self.controls.set_boot_keys([])
+        self.assertEqual(self.controls.snapshot()['boot_keys'], [])
+
     def test_peripheral_types_and_power_transition_reject_before_mutation(self):
         for value in ('true', 1, None, [], {}):
             with self.assertRaises(ValueError):

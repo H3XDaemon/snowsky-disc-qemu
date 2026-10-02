@@ -65,6 +65,46 @@ long read(int fd,void*data,unsigned long count){
   }
   return result;
 }
+/* qemu-user leaves /proc/<pid>/exe of every guest process pointing at the
+   interpreter, so BusyBox start-stop-daemon -x and killall-by-exe never match.
+   With the opt-in marker, report the guest program instead: the path the kernel
+   handed to qemu (after an optional `-0 argv0`). /proc/<pid>/cmdline is left
+   alone: the original argv[0] is not recoverable (see emulator/docs/stock-init.md). */
+static int proc_exe(const char*path,char*cmdline){
+  const char prefix[]="/proc/",suffix[]="/cmdline";int i=0,n;
+  for(;i<6;i++)if(path[i]!=prefix[i])return 0;
+  if(path[i]<'0'||path[i]>'9')return 0;
+  while(path[i]>='0'&&path[i]<='9'){if(i>=20)return 0;i++;}
+  if(path[i]!='/'||path[i+1]!='e'||path[i+2]!='x'||path[i+3]!='e'||path[i+4])return 0;
+  for(n=0;n<i;n++)cmdline[n]=path[n];
+  for(i=0;suffix[i];i++)cmdline[n++]=suffix[i];
+  cmdline[n]=0;return 1;
+}
+long readlink(const char*path,char*buf,unsigned long size){
+  const char qemu[]="/qemu-mipsel-static";char cmdline[40],args[512];long i,start,end;
+  long n=sys3(__NR_readlink,(long)path,(long)buf,size);
+  if(n<0){*__errno_location()=-n;return -1;}
+  if(n<19||!path||!proc_exe(path,cmdline))return n;
+  for(i=0;i<19;i++)if(buf[n-19+i]!=qemu[i])return n;
+  if(!marker_is_one("/emu/proc-exe"))return n;
+  long f=sys3(__NR_open,(long)cmdline,0,0);
+  if(f<0)return n;
+  long length=sys3(__NR_read,f,(long)args,sizeof args-1);
+  sys3(__NR_close,f,0,0);
+  if(length<=0)return n;
+  args[length]=0;
+  for(start=0;start<length&&args[start];start++);  /* qemu's own argv[0] */
+  start++;
+  if(start+2<length&&args[start]=='-'&&args[start+1]=='0'&&!args[start+2]){
+    start+=3;
+    while(start<length&&args[start])start++;       /* the argv0 value */
+    start++;
+  }
+  if(start>=length||args[start]!='/')return n;
+  for(end=start;end<length&&args[end];end++);
+  for(i=0;i<end-start&&(unsigned long)i<size;i++)buf[i]=args[start+i];
+  return i;
+}
 /* Observe stock framebuffer copies instead of guessing which of two changed buffers
    is newer. Delegate to the guest libc (no build-host glibc dependency). */
 extern void *mmap64(void*,unsigned long,int,int,int,long long);

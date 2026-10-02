@@ -35,5 +35,8 @@ class PeripheralHTTPTests(unittest.TestCase):
                 self.assertEqual(status, 200)
                 self.assertTrue(json.loads(data)['usb_connected'])
                 controls.set_usb.assert_called_once_with(True)
+                self.assertEqual(post({'name':'boot_keys', 'keys':['volume_up']})[0], 200)
+                controls.set_boot_keys.assert_called_once_with(['volume_up'])
+                self.assertEqual(post({'name':'boot_keys'})[0], 400)
         finally:
             server.shutdown(); server.server_close(); thread.join(2)

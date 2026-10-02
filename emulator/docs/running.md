@@ -28,6 +28,12 @@ with spaces, dollars and quotes are preserved; paths containing newlines are
 rejected. `shots/` remains at repository root, and default media stays under
 `emulator/sdcard/`.
 
+`boot --init` starts the guest through the stock init scripts instead of
+launching the two programs directly; `boot --hold KEYS` holds keys from power-on.
+`power on|reboot|off|cut` are power events that keep `/usr/data` and the card, and
+`up-image` prepares a guest from a rootfs image built on the stock firmware. See
+[stock init, power events and `/usr/data`](stock-init.md) and [keys](keys.md#keys-held-at-power-on).
+
 `start` starts an existing stopped service without setup. `boot` initializes and
 starts guest processes; `stop` stops only those guests. `shell`, `tap`, `capture`,
 `audio`, `diag` and `wscheck` retain their documented roles; run `help` for syntax.

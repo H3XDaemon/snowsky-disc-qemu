@@ -12,6 +12,7 @@ Start with the [launcher and configuration guide](running.md).
 - [Local network emulation](network.md)
 - [Settings reference](settings.md)
 - [Emulator status](status.md)
+- [Stock init boot, power events and `/usr/data`](stock-init.md)
 - [Touch injection](touch.md)
 
 ## Reports

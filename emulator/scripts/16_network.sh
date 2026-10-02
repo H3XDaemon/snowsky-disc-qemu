@@ -3,6 +3,25 @@
 # patches, fake DHCP, or changes to the Docker-assigned address/default route.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; source "$HERE/lib.sh"
+reannounce(){
+  local address
+  address="$(ip -4 -o addr show dev eth1 scope global | awk 'NR==1 {print $4}')"
+  [ -n "$address" ] || { err 'Docker eth1 has no IPv4 address'; exit 1; }
+  ip addr change "$address" dev eth1 valid_lft forever preferred_lft forever
+  log "Network: re-announced Docker eth1 $address"
+}
+wait_listeners(){
+  local n
+  for ((n=0;n<${NETWORK_WAIT:-30};n++)); do
+    if [ "$(ss -H -lnt | grep -Ec ':(12100|12103) ')" -eq 2 ]; then
+      log 'Network: stock TCP 12100 and HTTP 12103 are listening'
+      return 0
+    fi
+    sleep 1
+  done
+  err "Network services did not bind within ${NETWORK_WAIT:-30}s; inspect the player log"
+  exit 1
+}
 case "${1:-prepare}" in
   prepare)
     [ -e /sys/class/net/eth1/address ] || {
@@ -37,19 +56,10 @@ case "${1:-prepare}" in
     grep -q 'Network detect thread started' "$WORK/mq_player.log" || {
       err 'network detector did not start'; exit 1;
     }
-    address="$(ip -4 -o addr show dev eth1 scope global | awk 'NR==1 {print $4}')"
-    [ -n "$address" ] || { err 'Docker eth1 has no IPv4 address'; exit 1; }
-    ip addr change "$address" dev eth1 valid_lft forever preferred_lft forever
-    log "Network: re-announced Docker eth1 $address"
-    for ((n=0;n<30;n++)); do
-      if [ "$(ss -H -lnt | grep -Ec ':(12100|12103) ')" -eq 2 ]; then
-        log 'Network: stock TCP 12100 and HTTP 12103 are listening'
-        exit 0
-      fi
-      sleep 1
-    done
-    err 'Network services did not bind within 30s; inspect mq_player.log'
-    exit 1
+    reannounce
+    wait_listeners
     ;;
-  *) err 'usage: 16_network.sh [prepare|announce]'; exit 2 ;;
+  reannounce) reannounce ;;   # stock-init supervisor: once per mq_player start
+  wait) wait_listeners ;;
+  *) err 'usage: 16_network.sh [prepare|announce|reannounce|wait]'; exit 2 ;;
 esac

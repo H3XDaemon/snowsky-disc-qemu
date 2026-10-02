@@ -132,7 +132,9 @@ don't run init, so:
    `LOCAL_IMG_ANIM=1`. So a throwaway boot creates the DB, then we set `LOCAL_IMG_ANIM=0`, then
    boot for real.
 
-`emulator/scripts/10_setup_env.sh` does both automatically. (The language choice and this flag then
+`emulator/scripts/10_setup_env.sh` does both automatically. The opt-in
+[stock-init boot](stock-init.md) runs the real `rcS`, `S98FIIO` and `fiio_init.sh`
+instead; the same seeded and primed `/usr/data` serves both modes. (The language choice and this flag then
 persist in the `/work` volume.)
 
 The first-boot **language wizard** is gated on the same DB: it shows only while `LANGUAGE` is

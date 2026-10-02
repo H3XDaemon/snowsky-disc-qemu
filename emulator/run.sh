@@ -5,7 +5,14 @@
 #   ./emulator/run.sh up <ota_dir>       build/start, extract rootfs, set up environment
 #   ./emulator/run.sh start              start the existing stopped service
 #   ./emulator/run.sh shell              open an interactive container shell
-#   ./emulator/run.sh boot [seconds]     boot and capture PNGs into shots/
+#   ./emulator/run.sh up-image <image>   same, from a rootfs image built on the stock firmware
+#   ./emulator/run.sh boot [--init] [--hold KEYS] [seconds]
+#                                        boot and capture PNGs into shots/; --init boots through
+#                                        stock rcS; KEYS (volume_up,volume_down,play) held at power-on
+#   ./emulator/run.sh power <on|reboot|off|cut [--unsynced]|status>
+#                                        power events without rebuilding /usr/data or the card
+#   ./emulator/run.sh keys <hold|release|arm|show> [KEYS]
+#                                        key pin levels; arm = held from the next power-on
 #   ./emulator/run.sh tap <x> <y>        inject a tap and capture PNGs
 #   ./emulator/run.sh view [port]        start the live viewer (default :8080)
 #   ./emulator/run.sh capture [prefix]   capture the current framebuffer
@@ -88,12 +95,42 @@ case "$cmd" in
     compose exec -T emulator bash /repo/emulator/scripts/10_setup_env.sh
     echo '==> ready. Try: ./emulator/run.sh boot'
     ;;
+  up-image)
+    # A rootfs image (squashfs, possibly padded .bin) built on the selected stock firmware.
+    # Its directory is mounted as /ota; use a separate WORK_VOLUME for every image.
+    IMAGE="${1:?usage: ./emulator/run.sh up-image <rootfs image>}"
+    [[ -f "$IMAGE" ]] || { echo "no image file $IMAGE" >&2; exit 1; }
+    IMAGE_DIR="$(cd -- "$(dirname -- "$IMAGE")" && pwd)"
+    echo '==> docker compose up (build)'
+    OTA_DIR="$IMAGE_DIR" compose up -d --build
+    compose exec -T emulator bash -lc '[ -e /work/rootfs/usr/bin/mq_ui ] || /repo/emulator/scripts/01_image_rootfs.sh "/ota/$1"' -- "$(basename -- "$IMAGE")"
+    echo '==> setting up environment'
+    compose exec -T emulator bash /repo/emulator/scripts/10_setup_env.sh
+    echo '==> ready. Try: ./emulator/run.sh boot --init'
+    ;;
   start) need_service; echo 'emulator service running';;
   shell) need_service; compose exec emulator bash;;
   boot)
     need_service
-    compose exec -T emulator bash -lc '/repo/emulator/scripts/10_setup_env.sh >/dev/null && /repo/emulator/scripts/20_boot.sh "$1"' -- "${1:-0}"
+    boot_env=()
+    while [[ "${1:-}" == --* ]]; do
+      case "$1" in
+        --init) boot_env+=(-e BOOT_MODE=init); shift;;
+        --direct) boot_env+=(-e BOOT_MODE=direct); shift;;
+        --hold) boot_env+=(-e "BOOT_KEYS=${2:?--hold needs keys, e.g. volume_up,play}"); shift 2;;
+        *) echo "Unknown boot option: $1" >&2; exit 2;;
+      esac
+    done
+    compose exec -T ${boot_env[@]+"${boot_env[@]}"} emulator bash -lc '/repo/emulator/scripts/10_setup_env.sh >/dev/null && /repo/emulator/scripts/20_boot.sh "$1"' -- "${1:-0}"
     copy_shots
+    ;;
+  power)
+    need_service
+    compose exec -T emulator bash /repo/emulator/scripts/25_power.sh "$@"
+    ;;
+  keys)
+    need_service
+    compose exec -T emulator python3 -B -m emulator.runtime.gpio "$@"
     ;;
   tap)
     need_service
@@ -133,6 +170,6 @@ case "$cmd" in
   down) OTA_DIR="${OTA_DIR:-$REPO_DIR}" compose --profile wsbridge down; echo 'containers removed (work volume kept)';;
   nuke) OTA_DIR="${OTA_DIR:-$REPO_DIR}" compose --profile wsbridge down -v; echo 'containers and work volume removed';;
   compose) compose "$@";;
-  help|--help|-h) sed -n '2,20p' "$EMULATOR_DIR/run.sh";;
+  help|--help|-h) sed -n '2,28p' "$EMULATOR_DIR/run.sh";;
   *) echo "Unknown command: $cmd; see ./emulator/run.sh help" >&2; exit 2;;
 esac

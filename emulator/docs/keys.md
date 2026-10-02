@@ -46,6 +46,37 @@ After installing these changes, restart the guest and viewer once:
 Then reload the page. `boot` installs the shim through setup; a browser reload alone
 cannot replace a shim already loaded into a guest process.
 
+## Keys held at power-on
+
+A key that is already down when the player powers on produces no input event.
+Boot-stage programs read its **pin level**: GPIO port B input register `PxPIN`
+(`0x10010100`, pinctrl base `0x10010000` + `0x100`), active low, through an
+`mmap` of `/dev/mem`. Bit 13 is Volume Up, 14 Volume Down, 15 Play. With no key
+down the word is `0xF6EFE127` (read on a player, V2.40, 2026-08-13).
+
+The guest's `/dev/mem` is a sparse regular file that holds this one word, so a
+**static** program, which no preload shim can reach, reads the same levels as
+the stock `pb13`/`pb14` GPIO ioctl path. One state drives both
+(`emulator/runtime/gpio.py`): a Volume button held in the viewer is low in
+`/dev/mem` too.
+
+```sh
+./emulator/run.sh boot --hold volume_up,play     # down from before the first guest instruction
+./emulator/run.sh keys arm play                  # held at the NEXT power-on (viewer Power, power on)
+./emulator/run.sh keys hold volume_down          # down until `keys release`
+./emulator/run.sh keys show                      # {"word": "0xF6EFE127", "held": [], "armed": []}
+```
+
+Inside the container: `BOOT_KEYS=volume_up,play` for `20_boot.sh` / `25_power.sh on`,
+and `python3 -m emulator.runtime.gpio …`. The viewer accepts
+`POST /peripheral {"name": "boot_keys", "keys": ["volume_up"]}` and reports the
+armed keys as `boot_keys` in `/device.json`.
+
+Keys held from power-on are released when the UI is ready (60 seconds at most in
+a [stock-init](stock-init.md) guest); armed keys apply to one power-on. Names are
+`volume_up`, `volume_down` and `play_pause` (`play` is accepted). The Power key
+is not on this port and is not modelled as a pin.
+
 ## Implementation and verification
 
 - `viewer/static/keys.js` classifies physical gestures. `emulator/runtime/keys.py` injects their custom codes,

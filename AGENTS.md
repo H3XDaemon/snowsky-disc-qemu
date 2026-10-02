@@ -145,6 +145,16 @@ Physical acceptance (#23) and speech quality/native-Docker/Orange Pi performance
   directory and preserve the accepted report. Choose tests by impact; docs-only
   updates do not require another firmware or physical-device run.
 
+Opt-in **stock-init boot** (`BOOT_MODE=init`, `./emulator/run.sh boot --init`): the guest
+runs stock `rcS`/`S98FIIO`/`fiio_init.sh` in its own PID/IPC/UTS namespaces under a
+native PID 1 (`emulator/runtime/guest_init.py`), supervised by `emulator/runtime/machine.py`;
+power events are `emulator/scripts/25_power.sh on|reboot|off|cut`. `guest_run` joins those
+namespaces automatically. `USERDATA_MB` makes `/usr/data` an ext4 image; `01_image_rootfs.sh`
+takes a rootfs image built on stock. Key pin levels for static programs live in the guest's
+sparse `/dev/mem` (`emulator/runtime/gpio.py`). The direct boot stays the default: change it
+only behind a flag. Read `emulator/docs/stock-init.md` before touching either path.
+Never change the flags of the shared `qemu-mipsel` binfmt entry (other containers use it).
+
 ## Conventions
 
 - For another firmware/product, read `firmware/docs/porting.md` and its `firmware/docs/reports/<version>.md`

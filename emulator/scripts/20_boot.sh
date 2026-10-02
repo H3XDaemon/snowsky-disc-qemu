@@ -18,24 +18,39 @@ verify_firmware
 
 apply_ulimits
 kill_guest
-bash "$REPO/emulator/scripts/15_controls.sh"
+userdata_attach   # no-op without a USERDATA_MB image (10_setup_env.sh)
 bash "$REPO/emulator/scripts/16_network.sh" prepare
-rm -f "$ROOTFS/dev/mqueue/"* 2>/dev/null || true
-head -c $((SCR_W*SCR_VY*4)) /dev/zero > "$ROOTFS/dev/fb0"
-: > "$ROOTFS/dev/input/event1"; : > "$ROOTFS/dev/input/event0"
 
 # Guest lifetime is decoupled from the capture wait so the guests stay alive for the
 # interactive viewer (./emulator/run.sh view), not just long enough for one screenshot. Override
-# with GUEST_TTL (seconds); the timeout only bounds leaked qemu processes.
+# with GUEST_TTL (seconds, 0 = no limit); the timeout only bounds leaked qemu processes.
 GUEST_TTL="${GUEST_TTL:-1800}"
-log "Starting mq_ui (creates 'ui' queue)"
-guest_run "$GUEST_TTL" /usr/bin/mq_ui  >"$WORK/mq_ui.log"     2>&1 &
-sleep 4
-log "Starting mq_player (backend)"
-guest_run "$GUEST_TTL" /usr/bin/mq_player >"$WORK/mq_player.log" 2>&1 &
+case "${BOOT_MODE:-direct}" in
+  direct)
+    guest_view_direct
+    userdata_mount
+    board_reset
+    # BOOT_KEYS / armed keys are down from before the first guest instruction until boot ends.
+    python3 -B -m emulator.runtime.gpio power-on ${BOOT_KEYS:-} >/dev/null
+    log "Starting mq_ui (creates 'ui' queue)"
+    guest_run "$GUEST_TTL" /usr/bin/mq_ui  >"$WORK/mq_ui.log"     2>&1 &
+    sleep 4
+    log "Starting mq_player (backend)"
+    guest_run "$GUEST_TTL" /usr/bin/mq_player >"$WORK/mq_player.log" 2>&1 &
 
-# Announce as soon as the stock network detector subscribes, overlapping UI startup.
-bash "$REPO/emulator/scripts/16_network.sh" announce
+    # Announce as soon as the stock network detector subscribes, overlapping UI startup.
+    bash "$REPO/emulator/scripts/16_network.sh" announce
+    ;;
+  init)
+    # Stock boot: rcS -> S98FIIO -> fiio_init.sh starts and watches both programs.
+    # The supervisor announces the network and remounts the card on every start.
+    bash "$REPO/emulator/scripts/17_init_stubs.sh"
+    log "Powering on through stock init (console: $WORK/console.log)"
+    python3 -B -m emulator.runtime.machine start --ttl "$GUEST_TTL" --keys "${BOOT_KEYS:-}" >/dev/null
+    NETWORK_WAIT=120 bash "$REPO/emulator/scripts/16_network.sh" wait
+    ;;
+  *) err "Unknown BOOT_MODE '${BOOT_MODE}' (direct or init)"; exit 2 ;;
+esac
 log "Waiting for guest input devices and the first framebuffer flush..."
 ROOTFS="$ROOTFS" python3 -m emulator.runtime.boot_ready
 
@@ -43,6 +58,7 @@ ROOTFS="$ROOTFS" python3 -m emulator.runtime.boot_ready
 # under emulation). Re-mount the card now, after that umount, so the File Browser — which
 # scans /tmp/sdcard live on entry — shows the ./emulator/sdcard content. No-op when there is no card.
 if sd_node >/dev/null; then sd_mount; log "SD re-mounted at /tmp/sdcard (File Browser ready)"; fi
+python3 -B -m emulator.runtime.gpio release >/dev/null   # power-on keys are let go
 
 sleep "$WAIT"  # explicit CLI capture delay only; the viewer uses no fixed pause
 

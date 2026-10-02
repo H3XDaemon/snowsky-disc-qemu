@@ -24,7 +24,10 @@ services:
     environment:
       FW_VERSION: "${FW_VERSION:-}"     # exact-build profile; use a separate volume per version
       LANG_CODE: ${LANG_CODE:-2}
-      GUEST_TTL: ${GUEST_TTL:-1800}
+      GUEST_TTL: ${GUEST_TTL:-1800}     # seconds; 0 = no limit
+      BOOT_MODE: ${BOOT_MODE:-direct}   # direct, or init = stock rcS/fiio_init.sh (docs/stock-init.md)
+      USERDATA_MB: ${USERDATA_MB:-}     # set once (e.g. 83) to make /usr/data a size-limited image
+      SDCARD_KEEP: ${SDCARD_KEEP:-0}    # 1 = setup keeps the existing card image
       STREAM_FPS: ${STREAM_FPS:-12}
       DEVICE_BOOT_SCRIPT: ${DEVICE_BOOT_SCRIPT:-} # empty keeps the stock viewer Power-on path
     stop_grace_period: 2s

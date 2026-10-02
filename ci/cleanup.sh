@@ -9,3 +9,4 @@ done
 while IFS=: read -r loop rest; do
   [ -n "$loop" ] && losetup -d "$loop"
 done < <(losetup -j "$WORK/sdcard.img")
+userdata_detach   # no-op without a USERDATA_MB image
