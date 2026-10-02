@@ -25,6 +25,63 @@ WAV export also works without a browser.
 Each `pcm_open` starts a new recording, replacing `/audio.pcm`; export before switching
 tracks if you want to keep it.
 
+## Output stream state
+
+On the player `/proc/asound/card0/pcm3p/sub0/status` and `hw_params` show the
+stock output stream. A real procfs cannot be extended, so the audio shim keeps
+the same two files under **`/emu/asound/card0/pcm3p/sub0/`** in the guest
+(`closed`, or `state: PREPARED|RUNNING` with `owner_pid`, and the negotiated
+`format`, `channels`, `rate`, `period_size`, `buffer_size`). A program that
+takes the card directory as a parameter reads the output there; a path fixed to
+`/proc/asound` cannot be served to a static program.
+
+Stock keeps the stream **RUNNING while paused** and feeds it zeros, so the stream
+state alone does not tell playing from paused. `emu/audio-state` holds one byte:
+`c` closed, `s` silence, `p` samples. From Python:
+
+```python
+from emulator.runtime.audio import output_state
+output_state('/work/rootfs')
+# {'stream': 'RUNNING', 'activity': 'samples', 'format': 'S32_LE', 'rate': 44100, 'channels': 2}
+```
+
+The viewer's `/audio.json` carries the same object as `output`. A 16-bit 44.1 kHz
+file is fed to the DAC as `S32_LE` at 44100 Hz. A silent passage of a track is
+reported as silence too.
+
+## Analog output (jack) model
+
+Stock detects its outputs in the `adc_check` thread, three times a second with
+about a second of debounce (V2.57, read from the binary and confirmed live):
+
+| Output | What stock reads | Plugged when |
+| --- | --- | --- |
+| 3.5 mm | `/dev/gpio` level of `pb20` | 1 |
+| 4.4 mm balanced | ADC channel 2 (`/dev/jz_adc_aux_2`) | 801–949 or ≥ 1501; 1151–1349 is "none" |
+
+The result selects the volume curve, and an **unplug pauses local playback**.
+It does not gate playback: with nothing plugged from boot, stock still plays.
+
+By default the model is off and stock sees unmodelled pins (the `pb20` request
+fails, the ADC read returns no sample). `JACK=3.5`, `4.4` or `none` at setup or
+boot turns it on; the state is stored. At runtime:
+
+```sh
+curl -H 'Content-Type: application/json' -d '{"name":"jack","state":"none"}' \
+  http://localhost:8080/peripheral        # or Peripherals.set_jack('none')
+```
+
+`JACK=off` removes the model. Observed with it on: stock's own flags follow the
+plug (`83a775` 3.5 mm, `83a774` balanced); pulling the plug while a track plays
+pauses it (`a202` state 1, the stream keeps running on zeros); a 4.4 mm plug sets
+the balanced flag and does not resume; Play resumes. Plugging emits no message.
+
+Not reproduced: on a player with no output connected stock was seen to show
+"playing" while holding no file and with ALSA closed. Here an unplug before or
+during playback only pauses, and Play or a new selection plays normally. That
+state needs a hardware probe; the values above are threshold fixtures, not
+measured voltages, and line-out has no detector in the binary.
+
 ## Physical volume and browser sound
 
 The physical controls now honor the app's volume-gesture assignments ([KEYS.md](keys.md)).

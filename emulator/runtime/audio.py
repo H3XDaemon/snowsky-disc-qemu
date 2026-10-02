@@ -22,6 +22,33 @@ def capture_info(rootfs):
                 seconds=size / (frame_bytes * rate))
 
 
+STREAM = 'emu/asound/card0/pcm3p/sub0'
+ACTIVITY = {b'c': 'closed', b's': 'silence', b'p': 'samples'}
+
+
+def output_state(rootfs):
+    """The stock output stream as the audio shim last reported it.
+
+    `stream` is the ALSA state a program on the player reads in
+    /proc/asound/card0/pcm3p/sub0/status (closed, PREPARED, RUNNING). Stock keeps
+    the stream RUNNING while paused and feeds it zeros, so `activity` tells
+    silence from samples.
+    """
+    root = Path(rootfs)
+    result = dict(stream='closed', activity='closed', format=None, rate=None, channels=None)
+    try:
+        status = (root / STREAM / 'status').read_text()
+        parameters = (root / STREAM / 'hw_params').read_text()
+        result['activity'] = ACTIVITY.get((root / 'emu/audio-state').read_bytes()[:1], 'closed')
+    except OSError:
+        return result
+    fields = dict(line.split(':', 1) for line in (status + parameters).splitlines() if ':' in line)
+    if 'state' in fields:
+        result.update(stream=fields['state'].strip(), format=fields['format'].strip(),
+                      rate=int(fields['rate'].split()[0]), channels=int(fields['channels']))
+    return result
+
+
 def read_chunk(rootfs, generation, offset, limit=262144):
     info = capture_info(rootfs)
     frame_bytes = info['channels'] * info['sample_bytes']

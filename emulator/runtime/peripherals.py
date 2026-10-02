@@ -54,7 +54,8 @@ class Peripherals:
         saved = self.root / 'emu/sd-mmcblk0p1'
         return dict(brightness=brightness, sd_available=active.is_block_device() or saved.is_block_device(),
                     sd_inserted=active.is_block_device(),
-                    usb_connected=self._usb_connected(), boot_keys=sorted(gpio.armed(self.root)),
+                    usb_connected=self._usb_connected(), jack=self.jack(),
+                    boot_keys=sorted(gpio.armed(self.root)),
                     peripheral_transition=self.operation,
                     peripheral_error=self.error)
 
@@ -82,6 +83,30 @@ class Peripherals:
             if battery.is_file():
                 battery.write_text('Charging\n' if connected else 'Discharging\n')
             self.error = None
+
+    JACKS = {'3.5': b'3', '4.4': b'4', 'none': b'n'}
+
+    def jack(self):
+        """What is plugged into the analog outputs, or None while the model is off."""
+        try:
+            value = (self.root / 'emu/jack').read_bytes()[:1]
+        except OSError:
+            return None
+        return next((name for name, mark in self.JACKS.items() if mark == value), None)
+
+    def set_jack(self, state):
+        """'3.5', '4.4', 'none', or 'off' to remove the model.
+
+        Stock polls three times a second and debounces about a second."""
+        path = self.root / 'emu/jack'
+        if state == 'off':
+            path.unlink(missing_ok=True)
+            return
+        if state not in self.JACKS:
+            raise ValueError('Expected jack 3.5, 4.4, none or off')
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open('r+b' if path.exists() else 'wb') as marker:     # no empty-file interval
+            marker.write(self.JACKS[state])
 
     def set_boot_keys(self, keys):
         """Keys held from the next power-on until that boot ends (one boot only)."""

@@ -304,6 +304,8 @@ CI_SCENARIO=discovery FW_VERSION=2.57 bash ci/integration.sh /absolute/path/to/m
 CI_SCENARIO=stock-init FW_VERSION=2.57 bash ci/integration.sh /absolute/path/to/main_os/ota_v257
 # 30.9 GiB partitioned exFAT card, forced removal, emulated wlan0/isolation, stock Reset all.
 CI_SCENARIO=card-network FW_VERSION=2.57 bash ci/integration.sh /absolute/path/to/main_os/ota_v257
+# Output stream state (pause as silence) and the FPU-trap guard.
+CI_SCENARIO=audio-guards FW_VERSION=2.57 bash ci/integration.sh /absolute/path/to/main_os/ota_v257
 # Battery/settings/serial/cable presets, unlimited lifetime and headless power-off.
 CI_SCENARIO=environment FW_VERSION=2.57 bash ci/integration.sh /absolute/path/to/main_os/ota_v257
 # Natural screen timeout, idle shutdown and explicit local boot/reconnect.
@@ -314,7 +316,7 @@ CI_SCENARIO=idle-usb FW_VERSION=2.57 bash ci/integration.sh /absolute/path/to/ma
 
 `CI_SCENARIO` accepts `full` (default), `queue`, `queue-reads`, `settings`, `themes`,
 `preferences`, `playlists`, `library`, `library-delete`, `scan-cancel`, `library-reset`, `track-end`, `formats`,
-`discovery`, `stock-init`, `environment`, `card-network`, `idle` or `idle-usb`. All use the same
+`discovery`, `stock-init`, `environment`, `card-network`, `audio-guards`, `idle` or `idle-usb`. All use the same
 random-name isolated stack and cleanup. Focused runs execute only their selected
 checks, not unrelated integration scenarios. Most use the shared setup/scan/reboot
 preparation; `scan-cancel`, `library-reset`, `track-end` and `formats` start after boot and prepare their

@@ -16,6 +16,8 @@
 #define __NR_write 4004
 #define __NR_close 4006
 #define __NR_nanosleep 4166
+#define __NR_getpid 4020
+#define __NR_rename 4038
 #define O_WCT 0x301   /* MIPS O_WRONLY|O_CREAT|O_TRUNC  */
 
 static long sys3(long n, long a, long b, long c){
@@ -46,6 +48,62 @@ void *fopen(const char *path, const char *mode){
   return fopen64(path, mode);
 }
 
+/* What a program on the player reads in /proc/asound/card0/pcm3p/sub0: here under
+ * /emu/asound (a real procfs cannot be extended), kept in step with the stock stream.
+ * Readers never see a half-written file: write beside it, then rename. */
+static void publish(const char *name, const char *text, unsigned n){
+  char path[64] = "/emu/asound/card0/pcm3p/sub0/", fresh[68];
+  unsigned i = 29, k = 0;
+  while (name[k]) path[i++] = name[k++];
+  path[i] = 0;
+  for (k = 0; k < i; ++k) fresh[k] = path[k];
+  fresh[k++] = '.'; fresh[k++] = 'n'; fresh[k] = 0;
+  long fd = sys3(__NR_open, (long)fresh, O_WCT, 0644);
+  if (fd < 0) return;                       /* older setup without the tree: nothing to keep */
+  sys3(__NR_write, fd, (long)text, n);
+  sys3(__NR_close, fd, 0, 0);
+  sys3(__NR_rename, (long)fresh, (long)path, 0);
+}
+static unsigned put_s(char *b, unsigned n, const char *s){ while (*s) b[n++] = *s++; return n; }
+static unsigned put_u(char *b, unsigned n, unsigned v){
+  char d[10]; int k = 0;
+  do { d[k++] = '0' + v % 10; v /= 10; } while (v);
+  while (k) b[n++] = d[--k];
+  return n;
+}
+static unsigned g_period = 1024;
+static int g_stream = -1, g_audible = -1;
+static void stream_state(int state){        /* 0 closed, 1 PREPARED, 2 RUNNING */
+  char b[200]; unsigned n;
+  if (state == g_stream) return;
+  g_stream = state;
+  if (!state){ publish("status", "closed\n", 7); publish("hw_params", "closed\n", 7); return; }
+  n = put_s(b, 0, "access: RW_INTERLEAVED\nformat: ");
+  n = put_s(b, n, g_sb == 2 ? "S16_LE" : g_sb == 3 ? "S24_3LE" : "S32_LE");
+  n = put_s(b, n, "\nsubformat: STD\nchannels: "); n = put_u(b, n, (unsigned)g_ch);
+  n = put_s(b, n, "\nrate: "); n = put_u(b, n, g_rate);
+  n = put_s(b, n, " ("); n = put_u(b, n, g_rate);
+  n = put_s(b, n, "/1)\nperiod_size: "); n = put_u(b, n, g_period);
+  n = put_s(b, n, "\nbuffer_size: "); n = put_u(b, n, g_buffer_frames);
+  n = put_s(b, n, "\n");
+  publish("hw_params", b, n);
+  n = put_s(b, 0, "state: "); n = put_s(b, n, state == 2 ? "RUNNING" : "PREPARED");
+  n = put_s(b, n, "\nowner_pid   : "); n = put_u(b, n, (unsigned)sys3(__NR_getpid, 0, 0, 0));
+  n = put_s(b, n, "\n");
+  publish("status", b, n);
+}
+/* Stock keeps the stream running while paused and feeds it zeros. One byte tells the
+ * two apart for tests and the viewer: c closed, s silence, p samples. */
+static void audible(int state){
+  static const char mark[3] = {'c', 's', 'p'};
+  if (state == g_audible) return;
+  g_audible = state;
+  long fd = sys3(__NR_open, (long)"/emu/audio-state", 1 /* O_WRONLY: fixed-width overwrite */, 0);
+  if (fd < 0) return;
+  sys3(__NR_write, fd, (long)&mark[state], 1);
+  sys3(__NR_close, fd, 0, 0);
+}
+
 static int fmt_write(void){
   long fd = sys3(__NR_open, (long)"/audio.fmt", O_WCT, 0644);
   if (fd < 0) return -1;
@@ -71,13 +129,24 @@ struct pcm *pcm_open(unsigned card, unsigned device, unsigned flags, const void 
     if (fmt != 0 && fmt != 5 && fmt != 7) return (struct pcm *)0;
     g_sb = fmt == 0 ? 2 : fmt == 5 ? 3 : 4;
     g_buffer_frames = c[2]*c[3];
+    g_period = c[2];
     g_fd = sys3(__NR_open, (long)"/audio.pcm", O_WCT, 0644);
     if (g_fd < 0) return (struct pcm *)0;
     if (fmt_write() < 0){ sys3(__NR_close,g_fd,0,0); g_fd=-1; return (struct pcm *)0; }
   }
+  g_stream = -1;                            /* a new configuration is always published */
+  stream_state(1);
+  audible(1);
   return (struct pcm *)g_pcm;
 }
-int pcm_close(struct pcm *p){ (void)p; if(g_fd >= 0) sys3(__NR_close,g_fd,0,0); g_fd=-1; return 0; }
+int pcm_close(struct pcm *p){
+  (void)p;
+  if(g_fd >= 0) sys3(__NR_close,g_fd,0,0);
+  g_fd=-1;
+  stream_state(0);
+  audible(0);
+  return 0;
+}
 int pcm_is_ready(const struct pcm *p){ (void)p; return g_fd >= 0; }
 unsigned pcm_get_buffer_size(const struct pcm *p){ (void)p; return g_buffer_frames; }
 unsigned pcm_frames_to_bytes(const struct pcm *p, unsigned frames){ (void)p; return frames*g_ch*g_sb; }
@@ -95,6 +164,12 @@ int pcm_write(struct pcm *p, const void *data, unsigned count){
       if (w <= 0) return -1;
       off += (unsigned)w;
     }
+  }
+  if (count){
+    unsigned i = 0;
+    while (i < count && !((const char*)data)[i]) ++i;
+    stream_state(2);
+    audible(i < count ? 2 : 1);
   }
   /* A real DAC blocks until buffer space is available. Bound the emulated sink
    * too, including firmware-generated silence, so idle writes cannot flood disk. */

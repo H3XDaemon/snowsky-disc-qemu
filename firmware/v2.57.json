@@ -143,6 +143,16 @@
         5184920
       ]
     },
+    "output": {
+      "balanced": [
+        "83a774",
+        1
+      ],
+      "single_ended": [
+        "83a775",
+        1
+      ]
+    },
     "power": {
       "screen": [
         "83a755",
@@ -218,7 +228,8 @@
     "awake",
     "stock-init",
     "environment",
-    "card-network"
+    "card-network",
+    "audio-guards"
   ],
   "full_scenarios": [
     "library",

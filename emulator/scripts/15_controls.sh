@@ -13,6 +13,13 @@ printf '0' > "$ROOTFS/emu/power-request"
 printf '%s' "${PROC_EXE:-0}" > "$ROOTFS/emu/proc-exe"
 : > "$ROOTFS/dev/cst816t"
 : > "$ROOTFS/dev/lcd_st77916"
+# The output stream as /proc/asound/card0 shows it on the player (pcm3p), kept by tinyshim
+# under /emu/asound because a real procfs cannot be extended; and its audible/silent marker.
+mkdir -p "$ROOTFS/emu/asound/card0/pcm3p/sub0"
+printf 'x2000\n' > "$ROOTFS/emu/asound/card0/id"
+printf 'closed\n' > "$ROOTFS/emu/asound/card0/pcm3p/sub0/status"
+printf 'closed\n' > "$ROOTFS/emu/asound/card0/pcm3p/sub0/hw_params"
+printf 'c' > "$ROOTFS/emu/audio-state"
 # CS43131 attenuation registers, initialized muted until firmware configures the DAC.
 printf '\377' > "$ROOTFS/emu/dac-left"
 printf '\377' > "$ROOTFS/emu/dac-right"
@@ -32,6 +39,16 @@ case "${USB_POWER:-}" in
   1|0) printf '%s' "$USB_POWER" > "$ROOTFS/emu/usb-connected" ;;
   '') ;;
   *) err "USB_POWER must be 1, 0 or empty"; exit 1 ;;
+esac
+# JACK=3.5|4.4|none turns the analog-output model on and sets what is plugged; off removes
+# it (stock then sees the original unmodelled pins); empty keeps the stored state.
+case "${JACK:-}" in
+  3.5) printf '3' > "$ROOTFS/emu/jack" ;;
+  4.4) printf '4' > "$ROOTFS/emu/jack" ;;
+  none) printf 'n' > "$ROOTFS/emu/jack" ;;
+  off) rm -f "$ROOTFS/emu/jack" ;;
+  '') ;;
+  *) err "JACK must be 3.5, 4.4, none, off or empty"; exit 1 ;;
 esac
 B="$ROOTFS/sys/class/power_supply/cw221X-bat"
 # The player's gauge (BATTERY_PROFILE=device, type Mains) has no status attribute.

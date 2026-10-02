@@ -1,0 +1,125 @@
+"""FPU-trap guard and the qemu-user errno gap, on real cross-compiled programs."""
+import os
+from pathlib import Path
+import struct
+import subprocess
+import tempfile
+import unittest
+
+from emulator.runtime import abi
+
+GUEST = Path(__file__).resolve().parent / 'guest'
+SCRIPTS = Path(__file__).resolve().parents[1] / 'scripts'
+STATIC = ['mipsel-linux-gnu-gcc', '-static', '-nostdlib', '-mabi=32', '-march=mips32r2', '-fno-pic',
+          '-mno-abicalls', '-O1']
+
+
+def elf(fp_abi=None, interpreter=None, stack=None, machine=8):
+    """A minimal ELF32 LE header with the program headers the guard reads."""
+    segments, blob = [], b''
+    base = 52 + 32 * 3
+    if interpreter:
+        segments.append((3, base + len(blob), len(interpreter) + 1, 4))
+        blob += interpreter.encode() + b'\0'
+    if stack is not None:
+        segments.append((0x6474e551, 0, 0, 6 | (1 if stack else 0)))
+    if fp_abi is not None:
+        segments.append((0x70000003, base + len(blob), 24, 4))
+        blob += bytes([0, 0, 32, 2, 1, 0, 0, fp_abi]) + bytes(16)
+    header = b'\x7fELF\x01\x01\x01' + bytes(9) + struct.pack('<HHIIIIIHHHHHH', 2, machine, 1, 0x400000, 52, 0, 0,
+                                                             52, 32, len(segments), 40, 0, 0)
+    table = b''.join(struct.pack('<8I', kind, offset, 0, 0, size, size, flags, 4)
+                     for kind, offset, size, flags in segments).ljust(96, b'\0')
+    return header + table + blob
+
+
+class GuardTests(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.base = Path(tmp.name).resolve()
+        self.root = self.base / 'rootfs'
+        (self.root / 'emu').mkdir(parents=True)
+
+    def write(self, name, data):
+        path = self.root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        path.chmod(0o755)
+        return path
+
+    def verdict(self, **shape):
+        return abi.verdict(abi.inspect(self.write('probe', elf(**shape))))
+
+    def test_only_soft_float_or_the_stock_shape_is_accepted(self):
+        glibc = '/lib/ld-linux-mipsn8.so.1'
+        self.assertEqual(self.verdict(fp_abi=3, stack=False), 'ok')                  # soft-float, any shape
+        self.assertEqual(self.verdict(fp_abi=6, interpreter=glibc), 'ok')            # stock: no PT_GNU_STACK
+        self.assertEqual(self.verdict(fp_abi=6, interpreter=glibc, stack=False), 'trap')
+        self.assertEqual(self.verdict(fp_abi=5, stack=False), 'trap')                # static, modern toolchain
+        self.assertEqual(self.verdict(fp_abi=1, interpreter='/lib/ld-musl-mipsel.so.1', stack=True), 'trap')
+        self.assertEqual(self.verdict(interpreter=glibc), 'unknown')                 # no ABI flags at all
+        self.assertEqual(self.verdict(fp_abi=0, stack=False), 'ok')                  # uses no FPU
+        self.assertEqual(abi.verdict(abi.inspect(self.write('x86', elf(fp_abi=1, machine=62)))), 'ok')
+        self.assertEqual(abi.verdict(abi.inspect(self.write('script', b'#!/bin/sh\n'))), 'ok')
+        self.assertIsNone(abi.inspect(self.root / 'absent'))
+
+    def test_real_programs_from_the_cross_toolchain(self):
+        soft, hard = self.root / 'emu/soft', self.root / 'emu/hard'
+        subprocess.run(STATIC + ['-msoft-float', '-o', str(soft), str(GUEST / 'pinprobe.c')], check=True)
+        subprocess.run(STATIC + ['-mhard-float', '-Wl,-z,noexecstack', '-o', str(hard), str(GUEST / 'pinprobe.c')],
+                       check=True)
+        self.assertEqual([outcome for _, outcome, _ in abi.check([soft, hard])], ['ok', 'trap'])
+        self.assertEqual([path.name for path in abi.scan(self.root, ['/emu'])].count('hard'), 1)
+        result = subprocess.run(['python3', '-B', '-m', 'emulator.runtime.abi', 'check', str(soft), str(hard)],
+                                capture_output=True, text=True, cwd=SCRIPTS.parents[1])
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('soft-float', result.stderr)
+        self.assertIn('emu/hard: FP ABI hard', result.stderr)
+        self.assertNotIn('emu/soft', result.stderr)
+
+    def guest_run(self, *command, **environment):
+        commands = self.base / 'commands'
+        commands.mkdir(exist_ok=True)
+        (commands / 'timeout').write_text('#!/bin/sh\necho started "$@"\n')
+        (commands / 'timeout').chmod(0o755)
+        env = dict(os.environ, PATH=f'{commands}:{os.environ["PATH"]}', ROOTFS=str(self.root), WORK=str(self.base),
+                   REPO=str(SCRIPTS.parents[1]), FW_VERSION='2.57', **environment)
+        env.pop('FPU_GUARD', None) if 'FPU_GUARD' not in environment else None
+        return subprocess.run(['bash', '-c', f'source {SCRIPTS}/lib.sh; guest_run 5 "$@"', '-', *command],
+                              env=env, capture_output=True, text=True)
+
+    def test_guest_run_refuses_a_trapping_program_before_starting_it(self):
+        self.write('usr/data/service', elf(fp_abi=5, stack=False))
+        self.write('usr/bin/stock', elf(fp_abi=6, interpreter='/lib/ld-linux-mipsn8.so.1'))
+        refused = self.guest_run('/usr/data/service', '--port', '1')
+        self.assertEqual(refused.returncode, 126)
+        self.assertNotIn('started', refused.stdout)
+        self.assertIn('[fpu-guard]', refused.stderr)
+        # The explicit interpreter form other projects use is checked too.
+        explicit = self.guest_run('/emu/qemu-mipsel-static', '-0', 'disc-service', '/usr/data/service')
+        self.assertEqual(explicit.returncode, 126)
+        warned = self.guest_run('/usr/data/service', FPU_GUARD='warn')
+        self.assertEqual(warned.returncode, 0)
+        self.assertIn('started', warned.stdout)
+        self.assertIn('[fpu-guard]', warned.stderr)
+        silent = self.guest_run('/usr/data/service', FPU_GUARD='off')
+        self.assertEqual((silent.returncode, silent.stderr), (0, ''))
+        for command in (['/usr/bin/stock'], ['/bin/sh', '-c', 'true'], ['/absent']):
+            with self.subTest(command=command):
+                allowed = self.guest_run(*command)
+                self.assertEqual((allowed.returncode, allowed.stderr), (0, ''))
+
+    def test_pinned_qemu_returns_the_host_errno_from_so_error(self):
+        """Documents a qemu-user 7.2 gap (emulator/docs/limits.md). When this fails after an
+        image update, qemu translates SO_ERROR: update the page and expect 146 here."""
+        probe = self.base / 'soerror'
+        subprocess.run(['mipsel-linux-gnu-gcc', '-static', '-O1', '-o', str(probe), str(GUEST / 'soerror.c')],
+                       check=True)
+        output = subprocess.run(['qemu-mipsel-static', str(probe)], capture_output=True, text=True).stdout
+        self.assertIn('blocking connect=-1 errno=146', output)       # the syscall's own errno is translated
+        self.assertIn('SO_ERROR=111 ECONNREFUSED=146', output)       # the socket option's value is not
+
+
+if __name__ == '__main__':
+    unittest.main()
