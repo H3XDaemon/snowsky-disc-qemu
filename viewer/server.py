@@ -130,7 +130,7 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(size))
             if self.path == '/peripheral':
                 if data['name'] == 'sd':
-                    viewer_controls.set_sd(data['inserted'])
+                    viewer_controls.set_sd(data['inserted'], force=data.get('force', False))
                 elif data['name'] == 'usb':
                     viewer_controls.set_usb(data['connected'])
                 elif data['name'] == 'boot_keys':

@@ -74,6 +74,14 @@ Active firmware: **V2.57**. Local protocol research is finalized in
   settings profiles (including the untouched factory state), unlimited guest
   lifetime and power-off handling without the viewer.
   [Environment](emulator/docs/environment.md).
+- A card like the player's: selectable size, exFAT and a real partition table,
+  with which stock mounts the card by itself; forced removal while a track plays.
+  [Card options](emulator/docs/media-library.md#card-image-options).
+- Emulated `wlan0` with controllable state and address, a guest with no network
+  that can gain a link later, and a bandwidth limit for slow-link tests.
+  [Network](emulator/docs/network.md#emulated-links-isolation-and-shaping).
+- Stock "Reset all" runs to completion in a stock-init guest; analysis showed it
+  never involved the MCU. [Report](research/docs/reports/reset-all.md).
 - Daily OTA catalog monitoring with tracking issues; no automatic firmware
   download or promotion. Optional viewer Power-on script for custom startup.
 

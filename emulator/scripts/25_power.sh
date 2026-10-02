@@ -17,7 +17,7 @@ case "${1:-}" in
   reboot)
     guest_init_pid >/dev/null || { err 'reboot needs a running stock-init guest (BOOT_MODE=init)'; exit 1; }
     machine reboot >/dev/null
-    NETWORK_WAIT=120 bash "$HERE/16_network.sh" wait
+    guest_netns >/dev/null || NETWORK_WAIT=120 bash "$HERE/16_network.sh" wait
     ROOTFS="$ROOTFS" python3 -B -m emulator.runtime.boot_ready
     ;;
   off)

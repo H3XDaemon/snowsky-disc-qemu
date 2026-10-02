@@ -72,7 +72,7 @@ each stub prints an `[emu-init]` line on the console and succeeds):
 | `S21mount_ubifs` | `mount_ubifs.sh userdata /usr/data/` | No MTD/UBI. Mounts the [`/usr/data` image](#usrdata-as-its-own-filesystem) when there is one, else nothing. |
 | `S30rpcbind`, `S60nfs`, `S80dnsmasq` | `rpcbind`, `rpc.*`, `exportfs`, `dnsmasq` | Not started: they would serve the Docker network. |
 | `S40network` | `ifup -a` / `ifdown -a` | The container owns the interfaces. |
-| `S43wifi_bcm_init_config` | (script unchanged) | No `wlan0`: it gives up after its own three-second wait, as on a player without Wi-Fi. |
+| `S43wifi_bcm_init_config` | (script unchanged) | No `wlan0`: it gives up after its own three-second wait. With [`WLAN0=1`](network.md#emulated-links-isolation-and-shaping) it writes `wpa_supplicant.conf` and `macaddr.txt` as on the player. |
 | `S49ntp` | `ntpd` | Already blocked by the network guard; `Starting ntpd: FAIL`. |
 
 Running for real: `S01time_correct`, `S05avahi-setup.sh`, `S20urandom`, `S30dbus`
@@ -93,9 +93,11 @@ watch loop restarted it):
 - **Network**: a fresh `mq_player` subscribes to address events but never asks
   for the existing address. The Docker address is re-announced once per
   `Network detect thread started` line on the console ([network](network.md)).
-- **Card**: the pair unmounts `/tmp/sdcard` while it starts and expects a hotplug
-  remount. The card is mounted again after the new UI's first frame and kept
-  mounted for the next 20 seconds ([media library](media-library.md)).
+- **Card**: stock mounts a card whose partition it can enumerate by itself
+  (`SDCARD_PARTITION=1`, see [media library](media-library.md#card-image-options)).
+  For the default unpartitioned image the supervisor mounts it four seconds after
+  the new UI's first frame if stock has not, and keeps it mounted for the next
+  20 seconds.
 - **Keys** held from power-on are released when the UI is up, or after 60 seconds.
 - **Lifetime**: `GUEST_TTL` seconds after power-on the guest is cut; `0` is no limit.
 
@@ -219,8 +221,10 @@ as on the player: `S22*` runs after `S21mount_ubifs`, `/sbin/mq_ui` is what
 
 ## Limits
 
-- No guest kernel: no modules, MTD/UBI, mdev events, USB gadget, Wi-Fi or
+- No guest kernel: no modules, MTD/UBI, mdev events, USB gadget, Wi-Fi radio or
   Bluetooth.
+- Stock's "Reset all" completes only here (it ends in `reboot`) and only with
+  `WLAN0=1`; see the [report](../../research/docs/reports/reset-all.md).
 - BusyBox init itself does not run; `guest_init` follows its documented order
   and signals. `respawn` entries and the serial console are absent.
 - Guest mounts are visible to the container (no mount namespace): tools that

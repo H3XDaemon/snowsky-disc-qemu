@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       strace \
       sqlite3 \
       dosfstools \
+      exfatprogs \
       sox \
       python3 \
       python3-aiohttp \

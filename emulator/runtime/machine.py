@@ -14,7 +14,7 @@ import subprocess
 import sys
 import time
 
-from emulator.runtime import gpio
+from emulator.runtime import gpio, network
 from emulator.runtime.guest_init import FORCED, REBOOT, mounted, unmount
 
 REPO = Path(__file__).resolve().parents[2]
@@ -152,7 +152,9 @@ class Machine:
         # Keys named for this run apply to its first power-on; armed keys to the next one, once.
         gpio.power_on(self.root, self.keys if self.boots == 1 else ())
         (self.root / INIT_PID).unlink(missing_ok=True)
+        own = network.namespace(self.root)      # NETWORK=isolated: no interface but loopback
         self.child = subprocess.Popen(
+            (['nsenter', f'--net=/run/netns/{own}', '--'] if own else []) +
             NAMESPACES + [sys.executable, '-B', '-m', 'emulator.runtime.guest_init'],
             stdin=subprocess.DEVNULL, stdout=console, stderr=subprocess.STDOUT,
             env={**os.environ, 'ROOTFS': str(self.root)}, cwd='/')
@@ -163,7 +165,7 @@ class Machine:
         from emulator.runtime.keys import Device
         device = Device(self.root)
         offset, tail, published, keys_down = 0, b'', False, True
-        ui, waiting, settled = None, False, None
+        ui, waiting, settled, grace = None, False, None, 0
         let_go = time.monotonic() + 60          # nobody keeps a key down longer than this
         while self.child.poll() is None:
             if keys_down and time.monotonic() >= let_go:
@@ -184,7 +186,7 @@ class Machine:
                 log.seek(offset)
                 data = tail + log.read()
                 offset = log.tell()
-            if NETWORK_MARKER in data:
+            if NETWORK_MARKER in data and not network.namespace(self.root):
                 shell(self.root, f'bash {REPO}/emulator/scripts/16_network.sh reannounce')
             tail = data[-len(NETWORK_MARKER):] if NETWORK_MARKER not in data else b''
             # The stock pair unmounts the card while it starts and expects a hotplug
@@ -196,12 +198,15 @@ class Machine:
                 if waiting:
                     (self.root / 'emu/fb-live').write_bytes(b'\xff')
             elif waiting and ready(device):
-                waiting, settled = False, time.monotonic() + 20
+                # Stock mounts a card whose partition it can enumerate by itself, a moment
+                # after the player starts: give it that moment before stepping in.
+                waiting, grace, settled = False, time.monotonic() + 4, time.monotonic() + 24
                 if keys_down:
                     gpio.release(self.root)
                     keys_down = False
-            if settled and (self.root / 'dev/mmcblk0p1').is_block_device() and \
-                    not os.path.ismount(self.root / 'tmp/sdcard'):
+            if settled and time.monotonic() >= grace and (self.root / 'dev/mmcblk0p1').is_block_device() \
+                    and not os.path.ismount(self.root / 'tmp/sdcard'):
+                print('card not mounted by the stock start-up; mounting it', flush=True)
                 shell(self.root, 'sd_mount')
             if settled and time.monotonic() >= settled:
                 settled = None

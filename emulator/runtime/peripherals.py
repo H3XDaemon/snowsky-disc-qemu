@@ -7,7 +7,7 @@ import subprocess
 import threading
 import time
 
-from emulator.runtime import gpio
+from emulator.runtime import card, gpio
 from emulator.runtime.keys import BRIGHTNESS
 from firmware.profile import identify_player
 
@@ -90,11 +90,15 @@ class Peripherals:
         gpio.arm(self.root, keys)
 
     def _listener(self):
-        pid = self._pid()
-        if not any(row.split()[1:3] == ['15', str(pid)] for row in
+        """Netlink port of the player's uevent socket: its PID in its OWN PID namespace."""
+        pid = port = self._pid()
+        for line in Path(f'/proc/{pid}/status').read_text().splitlines():
+            if line.startswith('NSpid:'):
+                port = int(line.split()[-1])     # differs from pid in a stock-init guest
+        if not any(row.split()[1:3] == ['15', str(port)] for row in
                    Path('/proc/net/netlink').read_text().splitlines()[1:]):
             raise ValueError('SD listener is not ready')
-        return pid
+        return port
 
     def _event(self, action):
         pid = self._listener()
@@ -107,8 +111,9 @@ class Peripherals:
     def _mounted(self, path):
         return subprocess.run(['mountpoint', '-q', str(path)]).returncode == 0
 
-    def set_sd(self, inserted):
-        if type(inserted) is not bool:
+    def set_sd(self, inserted, force=False):
+        """force (removal only): pull the card even while a track is open, as a hand would."""
+        if type(inserted) is not bool or type(force) is not bool:
             raise ValueError('Expected inserted boolean')
         with self.device.lock, self.lock:
             if self.device.transition or self.operation:
@@ -120,48 +125,35 @@ class Peripherals:
                 raise ValueError('No emulated SD card')
             self.operation = 'Inserting SD card…' if inserted else 'Ejecting SD card…'
             self.error = None
-            threading.Thread(target=self._sd, args=(inserted,), daemon=True).start()
+            threading.Thread(target=self._sd, args=(inserted, force), daemon=True).start()
 
-    def _sd(self, inserted):
+    def _sd(self, inserted, force=False):
         try:
             # Power transitions use this same lock at request time. The operation
             # marker also blocks HTTP buttons until the card state has settled.
             with self.device.lock:
-                active = [self.root / ('dev/' + n) for n in ('mmcblk0', 'mmcblk0p1')]
+                active = [self.root / ('dev/' + n) for n in card.NODES]
                 saved = [self.root / ('emu/sd-' + p.name) for p in active]
                 self.root.joinpath('emu').mkdir(exist_ok=True)
                 source, target = (saved, active) if inserted else (active, saved)
                 identities = set()
                 for old, new in zip(source, target):
                     info = old.lstat()
-                    if not stat.S_ISBLK(info.st_mode) or os.major(info.st_rdev) != 7:
-                        raise ValueError('SD node does not belong to an emulated loop device')
+                    if not stat.S_ISBLK(info.st_mode):
+                        raise ValueError('SD node does not belong to an emulated block device')
                     if new.exists() or new.is_symlink():
                         raise ValueError('SD target node already exists')
                     identities.add(info.st_rdev)
-                if len(identities) != 1:
-                    raise ValueError('Mismatched SD device nodes')
-                card_image = self.root.parent / 'sdcard.img'
+                card_image = card.image(self.root)
                 if inserted:
                     # mount/umount can mark a loop AUTOCLEAR. Once the last
                     # mount disappears, its number can be reused by another
                     # container. Reattach THIS image and recreate its aliases;
-                    # never operate on the device number stored at ejection.
-                    loop = subprocess.check_output(['losetup', '--find', '--show', '--nooverlap',
-                                                    str(card_image)], text=True, timeout=5).strip()
-                    info = Path(loop).stat()
-                    if not stat.S_ISBLK(info.st_mode) or os.major(info.st_rdev) != 7:
-                        raise ValueError('Expected a loop device for this SD image')
-                    for node in saved:
-                        replacement = node.with_suffix('.new')
-                        os.mknod(replacement, stat.S_IFBLK | 0o644, info.st_rdev)
-                        replacement.replace(node)
-                else:
-                    loop_ids = {Path(line.split(':', 1)[0]).stat().st_rdev for line in
-                                subprocess.check_output(['losetup', '-j', str(card_image)],
-                                                        text=True, timeout=5).splitlines()}
-                    if not identities <= loop_ids:
-                        raise ValueError('SD node does not belong to this emulated image')
+                    # never operate on the device numbers stored at ejection.
+                    _, whole, part = card.attach(card_image)
+                    card.make_nodes(self.root / 'emu', whole, part, names=[node.name for node in saved])
+                elif not identities <= card.devices(card_image):
+                    raise ValueError('SD node does not belong to this emulated image')
                 if self.device.running():
                     self._listener()
                 if inserted:
@@ -178,8 +170,9 @@ class Peripherals:
                     # Stock cleanup uses rm -rf even after a failed umount.
                     # First unmount our image WITHOUT force/lazy flags; if busy,
                     # fail before notifying stock firmware. Never expose mounted
-                    # media to that cleanup path.
-                    self._unmount_sd(identities)
+                    # media to that cleanup path. A forced removal detaches a busy
+                    # mount instead (see _unmount_sd): the path is empty for stock.
+                    self._unmount_sd(identities, force)
                     if self.device.running():
                         self._event('remove')
                     self._move_nodes(active, saved)
@@ -192,7 +185,7 @@ class Peripherals:
         subprocess.run(['bash', '-lc', 'source /repo/emulator/scripts/lib.sh; sd_mount'],
                        env={**os.environ, 'ROOTFS': str(self.root)}, check=True, timeout=30)
 
-    def _unmount_sd(self, identities):
+    def _unmount_sd(self, identities, force=False):
         for mount in (self.root / 'tmp/sdcard', Path('/tmp/sdcard')):
             if self._mounted(mount):
                 if mount.stat().st_dev not in identities:
@@ -200,7 +193,12 @@ class Peripherals:
                 try:
                     subprocess.run(['umount', str(mount)], check=True, timeout=5, capture_output=True)
                 except subprocess.CalledProcessError as exc:
-                    raise ValueError('SD card is busy; stop playback and retry') from exc
+                    if not force:
+                        raise ValueError('SD card is busy; stop playback and retry') from exc
+                    # A pulled card: the mount leaves the namespace at once, so stock's
+                    # cleanup only finds an empty directory. A file the player still holds
+                    # stays readable until it closes it; real hardware returns I/O errors.
+                    subprocess.run(['umount', '-l', str(mount)], check=True, timeout=5, capture_output=True)
 
     def _wait_mount(self, mounted):
         deadline = time.monotonic() + 10

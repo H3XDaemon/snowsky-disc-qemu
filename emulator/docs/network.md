@@ -39,6 +39,68 @@ Docker assigns the address and default route. Published ports bind **127.0.0.1**
 12100, direct HTTP 12113, UDP 12101 and viewer 8080; the optional bridge adds 12103. Auth-free controls must not be
 accidentally exposed to the LAN.
 
+## Emulated links, isolation and shaping
+
+Verified on V2.57, 2026-10-02. All opt-in; the default is the Docker `eth1` above.
+
+```sh
+python3 -m emulator.runtime.network status
+python3 -m emulator.runtime.network link wlan0 --state up --addr 10.203.0.7/24
+python3 -m emulator.runtime.network link wlan0 --state down --addr none
+python3 -m emulator.runtime.network shape --rate 800kbit --delay 60ms --loss 1%
+python3 -m emulator.runtime.network shape off
+```
+
+- **`WLAN0=1`** (setup/boot variable, with optional `WLAN0_STATE`, `WLAN0_ADDR`,
+  `WLAN0_MAC`) creates an emulated `wlan0`: a dummy kernel link, so netlink and
+  `ifconfig` see it, plus the `/sys/class/net/wlan0/{address,operstate}` stub that
+  stock and services read. State and address are controlled with `link`; the
+  stub's `operstate` follows the requested state (`up`/`down`). In a
+  [stock-init](stock-init.md) guest `S43wifi_bcm_init_config` then runs as on the
+  player and writes `/usr/data/wpa_supplicant.conf` and `macaddr.txt`, which is
+  what the stock ["Reset all"](../../research/docs/reports/reset-all.md) needs.
+  No radio is emulated: `wpa_supplicant`, `udhcpc` and interface changes from the
+  guest stay blocked. Only dummy links can be changed; the Docker `eth1` cannot.
+- **`NETWORK=isolated`** boots the guest (either boot mode) in its own network
+  namespace with nothing but loopback: a player with no network. Nothing is
+  announced and the boot does not wait for the stock listeners. A link added
+  later is a real kernel event that stock handles by itself:
+
+  ```sh
+  python3 -m emulator.runtime.network link wlan0 --state up --addr 192.0.2.2/24 --gateway 192.0.2.1
+  ip netns exec disc-guest python3 -m controller.fiio_link   # clients must run inside
+  ```
+
+  With `wlan0` (or `eth1`) as the only link, stock logged `Interface wlan0: IP
+  Address added` and bound 12100 and 12103 three seconds later; the FiiO Link
+  handshake answered on that address. In a shared guest that already serves on
+  the Docker `eth1`, stock takes no notice of a second address on `wlan0`. The
+  published host ports do not reach an isolated guest; `guest_run` enters the
+  namespace automatically. `NETWORK=shared` (default) returns to the container's network.
+- **`shape`** limits what the guest sends on the Docker `eth1` (token bucket plus
+  optional delay and loss), which is what a client downloads, also through the
+  published host ports. Measured between two containers with a 3 MB file:
+  unlimited 280 MB/s; `--rate 800kbit --delay 60ms` 95 kB/s over 31.5 s. Uploads
+  to the guest are not limited. It is a constant-rate link, not a Wi-Fi model.
+
+### mDNS and the host LAN
+
+- The guest's own `avahi-daemon` starts under qemu-user, registers
+  `ingenic.local` on `eth1`, and then aborts on its first received packet
+  (`avahi_recv_dns_packet_ipv4: Assertion '!(msg.msg_flags & MSG_TRUNC)'`): the
+  pinned qemu 7.2 truncates that socket's control messages. Stock mDNS is
+  therefore not served.
+- A Docker Desktop container is not on the host's LAN and receives no multicast
+  from it, so a guest cannot be reached by a LAN address or answer LAN mDNS by
+  itself. What works is a host-side stand-in, opt-in and subject to the
+  [LAN bridge rules](../../controller/docs/discovery.md): run the bounded
+  `controller/bridge/lan_bridge.py` on the host's LAN address and publish the
+  name from the host, for example on macOS
+  `dns-sd -P ingenic _http._tcp local 12103 ingenic.local <host LAN IPv4>`.
+  A browser then reaches `http://ingenic.local:12103` as a private-network
+  address. This was not run in this work; it needs the owner's approval of LAN
+  exposure.
+
 ## Why it was blocked
 
 Three independent gates were observed:
