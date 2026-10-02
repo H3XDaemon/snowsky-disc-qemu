@@ -140,6 +140,15 @@ class ShellTests(unittest.TestCase):
         (self.root / 'emu/init.pid').write_text('1\n')                # some other live process
         self.assertEqual(self.guest_run('15', '/bin/ps')[0], 'timeout')
 
+    def test_loops_of_a_missing_image_are_never_looked_up_by_name(self):
+        (self.base / 'commands/losetup').write_text('#!/bin/sh\necho "/dev/loop7: [0]:1 ($2)"\n')
+        (self.base / 'commands/losetup').chmod(0o755)
+        loops = lambda path: subprocess.check_output(  # noqa: E731
+            ['bash', '-c', f'source {SCRIPTS}/lib.sh; image_loops "$1"', '-', str(path)], env=self.env, text=True)
+        self.assertEqual(loops(self.base / 'absent.img'), '')     # would name another container's loop
+        (self.base / 'present.img').touch()
+        self.assertEqual(loops(self.base / 'present.img'), '/dev/loop7\n')
+
     def stub(self, name, *args):
         target = self.base / name
         target.unlink(missing_ok=True)

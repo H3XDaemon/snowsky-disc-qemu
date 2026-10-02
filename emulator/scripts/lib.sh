@@ -74,6 +74,15 @@ guest_view_direct(){
 machine.restore_view(os.environ["ROOTFS"]); (machine.Path(os.environ["ROOTFS"]) / machine.STATE).unlink(missing_ok=True)'
 }
 
+# Loop devices of THIS container's image file. Loop devices are shared by every
+# container of the Docker VM, and `losetup -j` falls back to comparing the path
+# text when the file does not exist: on a fresh volume that names other
+# containers' /work/*.img loops. Never ask about a file that is not there.
+image_loops(){
+  [ -f "$1" ] || return 0
+  losetup -j "$1" 2>/dev/null | cut -d: -f1
+}
+
 # --- /usr/data as its own filesystem -------------------------------------------
 # With USERDATA_MB, 10_setup_env.sh creates $WORK/userdata.img (ext4, the size of
 # the player's userdata partition). Once the image exists it IS /usr/data: a loop
@@ -82,7 +91,7 @@ USERDATA_IMG="$WORK/userdata.img"
 userdata_attach(){
   [ -f "$USERDATA_IMG" ] || return 0
   local loop
-  loop="$(losetup -j "$USERDATA_IMG" | head -n1 | cut -d: -f1)"
+  loop="$(image_loops "$USERDATA_IMG" | head -n1)"
   [ -n "$loop" ] || loop="$(losetup -f --show "$USERDATA_IMG")"
   if [ "$(stat -c '%t:%T' "$ROOTFS/dev/ubi1_0" 2>/dev/null)" != "$(stat -c '%t:%T' "$loop")" ]; then
     rm -f "$ROOTFS/dev/ubi1_0"
@@ -92,7 +101,7 @@ userdata_attach(){
 userdata_detach(){
   local loop
   if mountpoint -q "$ROOTFS/usr/data"; then umount "$ROOTFS/usr/data"; fi
-  for loop in $(losetup -j "$USERDATA_IMG" 2>/dev/null | cut -d: -f1); do losetup -d "$loop"; done
+  for loop in $(image_loops "$USERDATA_IMG"); do losetup -d "$loop"; done
   rm -f "$ROOTFS/dev/ubi1_0"
 }
 userdata_mount(){

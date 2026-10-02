@@ -114,6 +114,8 @@ Active firmware: **V2.57**. Local protocol research is finalized in
 
 ### Fixed
 
+- Setup and cleanup of a fresh work volume no longer detach the card image of
+  another running emulator container (loop devices are shared by the Docker VM).
 - WebSocket bridge releases its connection slot even when an invalid peer disconnects
   during cleanup, allowing the next client to connect. [Details](controller/docs/websocket.md).
 

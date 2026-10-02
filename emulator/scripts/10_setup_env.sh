@@ -107,7 +107,7 @@ IMG="$WORK/sdcard.img"
 # Setup creates a new card; discard handles saved by viewer ejection.
 rm -f "$ROOTFS/emu/sd-mmcblk0" "$ROOTFS/emu/sd-mmcblk0p1"
 for m in "$ROOTFS/tmp/sdcard" /tmp/sdcard; do mountpoint -q "$m" && umount -l "$m" 2>/dev/null || true; done
-for l in $(losetup -j "$IMG" 2>/dev/null | cut -d: -f1); do losetup -d "$l" 2>/dev/null || true; done
+for l in $(image_loops "$IMG"); do losetup -d "$l" 2>/dev/null || true; done
 SD_CONTENT=""
 # SDCARD_KEEP=1 keeps an existing card image (what the guest wrote to it) instead of
 # rebuilding it from /sdcard; the first setup still builds it.
