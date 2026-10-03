@@ -14,6 +14,10 @@ SHOTS="${SHOTS:-$WORK/shots}"         # captured PNG framebuffers
 # Debian's explicitly; the binfmt entry follows the choice (10_setup_env.sh).
 if [ -z "${QEMU:-}" ] && [ -x /usr/local/bin/qemu-mipsel-static ]; then QEMU=/usr/local/bin/qemu-mipsel-static; fi
 QEMU="${QEMU:-/usr/bin/qemu-mipsel-static}"
+# What binfmt registers: the rebuilt qemu's own file lives in a directory named after its
+# build (/usr/local/lib/qemu-mipsel-<sha256 prefix>/), so a rebuilt image shows a new path
+# where the kernel would otherwise keep running the file it opened at the first registration.
+QEMU_INTERPRETER="$(readlink -f "$QEMU" 2>/dev/null || printf '%s' "$QEMU")"
 # Whether this interpreter can answer /dev/fb0 and /dev/input ioctls for static programs.
 qemu_has_devices(){ "$QEMU" -version 2>/dev/null | grep -q snowsky-disc-devices; }
 

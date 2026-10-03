@@ -85,7 +85,7 @@ Reference: [stock init, power events and `/usr/data`](../../emulator/docs/stock-
   program **for BusyBox and other dynamically linked readers**, so
   `start-stop-daemon -S/-K -x` and pidfile checks work. A **static** program
   still reads `qemu-mipsel-static` there, and `cmdline` always starts with it
-  (`/usr/local/bin/qemu-mipsel-static`, the rebuilt interpreter)
+  (the rebuilt interpreter's file, `/usr/local/lib/qemu-mipsel-<build>/qemu-mipsel-static`)
   (then the file's path, then the caller's `argv[0]`, which the program also
   receives as its own `argv[0]`):
   compare `comm` instead (identical on the player).
@@ -201,9 +201,10 @@ network page), USB gadget and storage mode, real memory limits.
 - BusyBox init itself does not run; a native PID 1 follows its order and signals.
 - One `qemu-mipsel` binfmt registration is shared by all containers of the
   Docker VM; its flags must not be changed. The kernel holds the interpreter
-  that registered last: an older stack's container may leave Debian's unpatched
-  qemu there until this stack's setup runs (its static probe re-registers), and
-  the rebuilt qemu runs the other stacks' guests unchanged (no marker, no answers).
+  file that registered last: an older stack's container may leave Debian's
+  unpatched qemu there until this stack's setup runs, and a rebuilt image is
+  registered by its build-named path, so setup sees the change; the rebuilt qemu
+  runs the other stacks' guests unchanged (no marker, no answers).
 
 ## Interface changes
 

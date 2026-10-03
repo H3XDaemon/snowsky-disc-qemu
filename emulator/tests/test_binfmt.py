@@ -11,10 +11,11 @@ class BinfmtTests(unittest.TestCase):
         assignments = '\n'.join(re.findall(r'^(?:MAGIC|MASK)=.*$', source, re.M))
         command = next(line.strip().split(' > ')[0] for line in source.splitlines()
                        if 'printf' in line and ':qemu-mipsel:M:' in line)
-        encoded = subprocess.check_output(['bash', '-c', assignments + '\nQEMU=/qemu\n' + command])
+        encoded = subprocess.check_output(['bash', '-c', assignments + '\nQEMU_INTERPRETER=/lib/qemu-x/qemu\n' + command])
         self.assertNotIn(b'\0', encoded)  # Raw NUL truncated the old registration at byte 6.
         fields = encoded.decode().split(':')
         self.assertEqual(fields[-1], 'FP')      # P: the caller's argv[0] reaches the program
+        self.assertEqual(fields[-2], '/lib/qemu-x/qemu')   # the build-named file, not the stable link
         magic, mask = (bytes.fromhex(value.replace('\\x', '')) for value in fields[4:6])
         self.assertEqual(len(magic), 20)
         self.assertEqual(len(mask), 20)

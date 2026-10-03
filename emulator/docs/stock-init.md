@@ -141,7 +141,7 @@ A program started this way is part of the guest: `reboot`, `off` and `cut` end i
 | --- | --- | --- |
 | `/proc/<pid>/comm`, `pgrep -x`, `pidof`, `killall` | program name | **same** (`mq_ui`, `mq_player`, `init` for PID 1) |
 | `/proc/<pid>/exe` through BusyBox or any glibc program | program path | **same in stock-init mode**: `fbshim` reports the guest program instead of `qemu-mipsel-static` (`emu/proc-exe`, `PROC_EXE=1` enables it for a direct boot too) |
-| `/proc/<pid>/exe` read by a **static** program | program path | `/usr/local/bin/qemu-mipsel-static`: no shim is loaded into a static program |
+| `/proc/<pid>/exe` read by a **static** program | program path | the interpreter's file, `/usr/local/lib/qemu-mipsel-<build>/qemu-mipsel-static`: no shim is loaded into a static program |
 | `/proc/<pid>/cmdline` | `argv` | `qemu-mipsel-static`, the program's **full path**, then `argv[0]` and the arguments |
 | `argv[0]` inside the program | as started (`mq_ui`) | **same**: the binfmt entry's `P` flag hands the caller's `argv[0]` to qemu |
 
@@ -191,12 +191,18 @@ the shim still answers first for them.
   every power-on; `QEMU_DEVICES=0` leaves the kernel's `ENOTTY` (the previous
   behaviour). `QEMU=/usr/bin/qemu-mipsel-static` selects Debian's unpatched
   interpreter altogether.
-- The binfmt entry follows the chosen interpreter: setup replaces an entry whose
-  `interpreter` line differs. The kernel opened the interpreter at registration,
-  so after an image rebuild it may still hold the previous binary: setup runs the
-  static probe `/emu/devprobe` (`emulator/tests/guest/devprobe.c`) through the
-  entry and re-registers once if the devices are not answered. An image built
-  without the stage reports `QEMU_DEVICES=1 but … lacks the device patch`.
+- The binfmt entry follows the chosen interpreter. The kernel keeps the **file**
+  it opened at registration, whatever happens to the path later, and the entry is
+  shared by every container of the Docker VM. So the rebuilt qemu is installed
+  under a directory named after its build (`/usr/local/lib/qemu-mipsel-<sha256
+  prefix>/qemu-mipsel-static`; `/usr/local/bin/qemu-mipsel-static` links to it)
+  and registered by that path (`lib.sh` `QEMU_INTERPRETER`): setup replaces an
+  entry whose `interpreter` line differs, so a rebuilt image is picked up at its
+  first setup. Setup then runs the static probe `/emu/devprobe`
+  (`emulator/tests/guest/devprobe.c`) through the entry and expects what this
+  build does — device answers and the probe's own PID in `emu/fb-flush` after
+  its pan — re-registering once otherwise. An image built without the stage
+  reports `QEMU_DEVICES=1 but … lacks the device patch`.
 - Firmware-free: `emulator/tests/test_devices.py` runs the probe under
   `qemu-mipsel-static -L <sysroot>`; the stock-init scenario below runs it in the
   live guest and flips the marker.
