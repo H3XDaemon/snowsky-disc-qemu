@@ -176,9 +176,18 @@ def check_watch_loop(device, pair):
     card_mounted()
 
 
+def uptime():
+    return float(guest('cat /proc/uptime').split()[0])
+
+
 def check_reboot():
     guest('echo ram > /run/emu-check/volatile; echo ram > /tmp/volatile; echo flash > /usr/data/kept; '
           'echo card > /tmp/sdcard/kept.txt')
+    # The guest's clocks count from its power-on, not from the Docker VM's boot.
+    before = uptime()
+    assert before < 300, f'/proc/uptime is not this guest\'s: {before}'
+    assert float(Path('/proc/uptime').read_text().split()[0]) > before + 60   # the container's is older
+    started = time.monotonic()
     power('reboot')
     state = machine.state(ROOT)
     assert state['state'] == 'running' and state['boots'] == 2, state
@@ -189,6 +198,8 @@ def check_reboot():
     card_mounted()
     assert (ROOT / 'tmp/sdcard/kept.txt').read_text() == 'card\n'
     assert guest('cat /proc/1/comm; pgrep -x mq_ui | wc -l').split() == ['init', '1']
+    after = uptime()
+    assert after < time.monotonic() - started + 5, f'uptime did not restart with the reboot: {before} -> {after}'
 
 
 def check_power_cut(device):

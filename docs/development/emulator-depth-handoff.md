@@ -112,7 +112,9 @@ That run is evidence for the emulator features, not an acceptance of the boot la
 - `cut` kills every guest process at once. With `--unsynced` the `/usr/data`
   image additionally loses whatever had not reached it (ext4: up to 5 s of
   metadata, up to 30 s of unsynced file data). The card keeps everything.
-- Every power-on has empty `/run` and `/tmp`, new PIDs and no stale message queues.
+- Every power-on has empty `/run` and `/tmp`, new PIDs, no stale message queues,
+  and an uptime that starts at zero (`/proc/uptime`, `CLOCK_BOOTTIME`,
+  `CLOCK_MONOTONIC`); the wall clock stays the host's.
 - `/usr/data` (image or directory) and the card survive all four events and
   container restarts; only `10_setup_env.sh` rebuilds the card (unless
   `SDCARD_KEEP=1`) and nothing recreates `/usr/data`.

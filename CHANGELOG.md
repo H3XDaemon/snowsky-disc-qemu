@@ -86,6 +86,8 @@ Active firmware: **V2.57**. Local protocol research is finalized in
   for programs and tests, a guard that refuses programs which run here but
   would die on the player's FPU handling, and a page on what the emulator
   cannot show. [Audio](emulator/docs/audio.md#output-stream-state), [limits](emulator/docs/limits.md).
+- A stock-init guest's uptime and monotonic clocks count from its power-on
+  (a time namespace), not from the Docker VM's boot. [Stock init](emulator/docs/stock-init.md).
 - An opt-in model of the 3.5 mm and 4.4 mm outputs that feeds stock's own
   detection (unplugging pauses playback), and `EMU_CPUS` to slow the whole
   container. [Jack model](emulator/docs/audio.md#analog-output-jack-model),

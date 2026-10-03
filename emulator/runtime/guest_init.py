@@ -1,6 +1,6 @@
 """PID 1 of a guest booted through the stock init scripts (BOOT_MODE=init).
 
-Run only by emulator.runtime.machine inside fresh PID, IPC and UTS namespaces.
+Run only by emulator.runtime.machine inside fresh PID, IPC, UTS and time namespaces.
 It stands in for BusyBox init and the inittab: prepares what the kernel and the
 sysinit lines provide on the player, runs the real /etc/init.d/rcS, reaps
 orphans, and answers the same signals (TERM reboot, USR1/USR2 halt/poweroff)

@@ -51,7 +51,7 @@ guest_run(){
     --bounding-set=-net_admin,-sys_time,-sys_boot,-sys_module,-sys_rawio
     --no-new-privs chroot "$ROOTFS" "$@")
   if net="$(guest_netns)"; then enter+=(--net="/run/netns/$net"); fi
-  if init="$(guest_init_pid)"; then enter+=(--target "$init" --pid --ipc --uts); fi
+  if init="$(guest_init_pid)"; then enter+=(--target "$init" --pid --ipc --uts --time); fi
   if [ "${#enter[@]}" -gt 0 ]; then
     nsenter "${enter[@]}" -- "${confined[@]}"
   else

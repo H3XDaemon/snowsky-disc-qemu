@@ -122,8 +122,10 @@ the others to stock. For a true factory state use a new work volume with
 
 ## Guest clock: not adjustable
 
-The guest always runs on the host's clock. An offset or an "unsynchronised" clock
-was investigated and is **not** provided:
+The guest's **wall clock** is the host's. (Its uptime is its own: a stock-init
+guest runs in a time namespace, so `/proc/uptime`, `CLOCK_BOOTTIME` and
+`CLOCK_MONOTONIC` count from its power-on, see [stock init](stock-init.md).)
+An offset or an "unsynchronised" wall clock was investigated and is **not** provided:
 
 - qemu-user passes time calls to the shared kernel; there is no guest clock.
   A time namespace offsets only the monotonic clocks, and the container must
