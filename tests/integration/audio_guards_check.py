@@ -105,7 +105,11 @@ def check_jack(device):
         assert client.now_playing()['state'] == 1                       # paused, by stock itself
         controls.set_jack('4.4')
         wait(jack_flags, lambda flags: flags == (0, 1), 'stock did not detect the 4.4 mm plug')
-        assert output_state(ROOT)['activity'] == 'silence'              # a plug does not resume
+        seen = set()
+        for _ in range(8):                                              # a plug does not resume
+            seen.add(output_state(ROOT)['activity'])
+            time.sleep(.25)
+        assert 'samples' not in seen and client.now_playing()['state'] == 1, seen
         Buttons(ROOT, device).gesture('play_pause', 'single')
         wait(lambda: output_state(ROOT), lambda now: now['activity'] == 'samples', 'Play did not resume')
     for bad in ('2.5', None, 3.5):

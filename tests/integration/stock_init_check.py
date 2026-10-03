@@ -70,7 +70,11 @@ def wait(read, predicate, label, timeout=30):
 
 
 def stock(device):
-    """Container PIDs of the stock pair, by the names the watch loop itself uses."""
+    """Container PIDs of the stock pair, by the names the watch loop itself uses.
+
+    While the watch loop replaces the pair, a dying and a starting process can carry
+    the same name for a moment: that is "not settled" (an empty answer), not an error.
+    """
     found = {}
     for pid in device.processes():
         try:
@@ -78,7 +82,8 @@ def stock(device):
         except OSError:
             continue
         if name in ('mq_ui', 'mq_player'):
-            assert name not in found, f'duplicate {name}'
+            if name in found:
+                return {}
             found[name] = pid
     return found
 
