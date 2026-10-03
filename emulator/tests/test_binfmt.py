@@ -14,6 +14,7 @@ class BinfmtTests(unittest.TestCase):
         encoded = subprocess.check_output(['bash', '-c', assignments + '\nQEMU=/qemu\n' + command])
         self.assertNotIn(b'\0', encoded)  # Raw NUL truncated the old registration at byte 6.
         fields = encoded.decode().split(':')
+        self.assertEqual(fields[-1], 'FP')      # P: the caller's argv[0] reaches the program
         magic, mask = (bytes.fromhex(value.replace('\\x', '')) for value in fields[4:6])
         self.assertEqual(len(magic), 20)
         self.assertEqual(len(mask), 20)

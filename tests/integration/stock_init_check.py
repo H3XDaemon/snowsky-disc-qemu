@@ -153,6 +153,9 @@ def check_boot(device):
     view = guest('cat /proc/1/comm; hostname; pgrep -x mq_ui | wc -l; pgrep -x mq_player | wc -l; '
                  'grep -c "^tmpfs /run tmpfs" /proc/mounts; grep -c "^tmpfs /tmp tmpfs" /proc/mounts').split()
     assert view == ['init', 'ingenic', '1', '1', '1', '1'], view
+    # The caller's argv[0] reaches the program (binfmt P flag): BusyBox picks its applet from it.
+    assert guest('exec -a echo /bin/busybox argv0-kept').strip() == 'argv0-kept'
+    assert Path(f'/proc/{pair["mq_ui"]}/cmdline').read_bytes().split(b'\0')[2] == b'mq_ui'   # as fiio_init.sh started it
     # /proc/<pid>/exe names the guest program: BusyBox start-stop-daemon -x works as on the player.
     daemon = guest('cat /run/emu-check/daemon.pid').strip()
     assert guest(f'readlink /proc/{daemon}/exe').strip() == '/bin/sleep'

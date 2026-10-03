@@ -153,7 +153,8 @@ namespaces automatically. `USERDATA_MB` makes `/usr/data` an ext4 image; `01_ima
 takes a rootfs image built on stock. Key pin levels for static programs live in the guest's
 sparse `/dev/mem` (`emulator/runtime/gpio.py`). The direct boot stays the default: change it
 only behind a flag. Read `emulator/docs/stock-init.md` before touching either path.
-Never change the flags of the shared `qemu-mipsel` binfmt entry (other containers use it).
+The shared `qemu-mipsel` binfmt entry is `FP` (`P` = the caller's `argv[0]` reaches the guest
+program); setup replaces an entry registered without it. Do not add other flags or entries.
 Guest presets are setup/boot variables (`BATTERY_PROFILE`, `DEVICE_SN`, `USB_POWER`,
 `SETTINGS_PROFILE`, `SETTINGS`, `POWER_WATCH`, `GUEST_TTL=0`); see `emulator/docs/environment.md`.
 Defaults must keep producing the original guest. The guest clock cannot be shifted (same page).

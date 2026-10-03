@@ -134,19 +134,21 @@ A program started this way is part of the guest: `reboot`, `off` and `cut` end i
 | `/proc/<pid>/comm`, `pgrep -x`, `pidof`, `killall` | program name | **same** (`mq_ui`, `mq_player`, `init` for PID 1) |
 | `/proc/<pid>/exe` through BusyBox or any glibc program | program path | **same in stock-init mode**: `fbshim` reports the guest program instead of `qemu-mipsel-static` (`emu/proc-exe`, `PROC_EXE=1` enables it for a direct boot too) |
 | `/proc/<pid>/exe` read by a **static** program | program path | `/usr/bin/qemu-mipsel-static`: no shim is loaded into a static program |
-| `/proc/<pid>/cmdline` | `argv` | `qemu-mipsel-static`, the program's **full path**, then the arguments |
-| `argv[0]` inside the program | as started (`mq_ui`) | the full path (`/usr/bin/mq_ui`) |
+| `/proc/<pid>/cmdline` | `argv` | `qemu-mipsel-static`, the program's **full path**, then `argv[0]` and the arguments |
+| `argv[0]` inside the program | as started (`mq_ui`) | **same**: the binfmt entry's `P` flag hands the caller's `argv[0]` to qemu |
 
 So BusyBox `start-stop-daemon -S/-K -x <program>` with or without a pidfile works
 in a stock-init guest: a second start reports `already running`, and `rcK` stops
 the daemon. `-n <name>` works in both modes.
 
-`cmdline` and `argv[0]` cannot be corrected here. The kernel hands the original
-`argv[0]` to an interpreter only with the binfmt_misc `P` flag, and the single
-`qemu-mipsel` registration is shared by every container of the Docker VM, so
-changing its flags would change running guests of other projects. A static
-program that must recognise another process should compare `/proc/<pid>/comm`
-(or the name field of `/proc/<pid>/stat`): that is identical on the player and here.
+`cmdline` cannot be corrected: the kernel builds it for the interpreter. A
+static program that must recognise another process should compare
+`/proc/<pid>/comm` (or the name field of `/proc/<pid>/stat`): that is identical
+on the player and here. The `P` flag is part of the one `qemu-mipsel`
+registration shared by every container of the Docker VM; `10_setup_env.sh`
+replaces an entry registered without it, which changes `argv[0]` for other
+stacks' next execs as well (an improvement for them too, and nothing in this
+repository or its known consumers reads the guest's `argv[0]` through the host).
 For a script the reported `exe` is the interpreter as invoked (`/bin/sh`), not the
 resolved `/bin/busybox`.
 

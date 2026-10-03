@@ -80,7 +80,9 @@ Reference: [stock init, power events and `/usr/data`](../../emulator/docs/stock-
 - `/proc/<pid>/comm` is the program name. `/proc/<pid>/exe` names the guest
   program **for BusyBox and other dynamically linked readers**, so
   `start-stop-daemon -S/-K -x` and pidfile checks work. A **static** program
-  still reads `qemu-mipsel-static` there, and `cmdline` always starts with it:
+  still reads `qemu-mipsel-static` there, and `cmdline` always starts with it
+  (then the file's path, then the caller's `argv[0]`, which the program also
+  receives as its own `argv[0]`):
   compare `comm` instead (identical on the player).
 - Use `guest_run` for commands in a running guest: it joins the guest's
   namespaces. A program started with it is ended by reboot, power-off and cut.
