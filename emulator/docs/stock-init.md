@@ -106,6 +106,11 @@ watch loop restarted it):
   the new UI's first frame if stock has not, and keeps it mounted for the next
   20 seconds.
 - **Keys** held from power-on are released when the UI is up, or after 60 seconds.
+- "The UI is up" means: a process named `mq_ui` (`/proc/<pid>/comm`, what
+  stock's own `pgrep -x` matches) holds the touch device and a process named
+  `mq_player` holds the key device, and a frame was drawn since power-on. A UI
+  started from another file (a boot layer's `ui` package through `/sbin/mq_ui`)
+  counts like stock's; a launcher or watcher that only carries the name does not.
 - **Lifetime**: `GUEST_TTL` seconds after power-on the guest is cut; `0` is no limit.
 
 ### Commands in a running guest

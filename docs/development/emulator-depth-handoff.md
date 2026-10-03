@@ -69,6 +69,10 @@ Reference: [stock init, power events and `/usr/data`](../../emulator/docs/stock-
   before `S98FIIO`; `S99*` after it. `rcK` calls `stop` in reverse order.
 - At `S99` time `mq_ui` is not running yet: `S98FIIO` only backgrounds
   `fiio_init.sh`.
+- Readiness (the card remount, the release of power-on keys, `20_boot.sh`'s
+  wait) recognises the UI by its name `mq_ui` and the touch device it holds,
+  so a `ui` package started through `/sbin/mq_ui` counts; a launcher that only
+  carries the name does not.
 - The card is not mounted while `rcS` runs. With `SDCARD_PARTITION=1` stock
   mounts it a moment after `mq_player` starts; with the default image the
   emulator mounts it a few seconds after the UI is up. A boot stage that needs

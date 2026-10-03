@@ -243,13 +243,10 @@ class Machine:
 
     @staticmethod
     def ui_pid(device):
-        for pid in device.processes():
-            try:
-                if Path(f'/proc/{pid}/comm').read_text().strip() == 'mq_ui':
-                    return pid
-            except OSError:
-                pass
-        return None
+        """The UI that holds the touch device: not a launcher or watcher carrying its name."""
+        from emulator.runtime.boot_ready import holders   # keys -> machine -> boot_ready -> keys
+        found = holders(device)['mq_ui']
+        return found[0] if found else None
 
     def power_cut(self, reason, unsynced):
         self.child.kill()                  # --kill-child: takes the guest's PID 1 with it
