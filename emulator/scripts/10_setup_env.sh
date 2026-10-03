@@ -19,19 +19,24 @@ log "binfmt_misc: mipsel interpreter"
 mountpoint -q /proc/sys/fs/binfmt_misc || mount -t binfmt_misc none /proc/sys/fs/binfmt_misc 2>/dev/null || true
 MAGIC='\x7f\x45\x4c\x46\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x08\x00'
 MASK='\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xfe\xff\xff\xff'
+# Flags: F opens the interpreter at registration (it works inside the chroot); P hands the
+# caller's argv[0] to qemu (AT_FLAGS_PRESERVE_ARGV0, Linux 5.12+, honoured by qemu 7.2), as
+# the player's kernel keeps it. Without P every guest program saw its file's path as argv[0].
 # Older printf used the registration as its FORMAT: embedded NULs truncated the
-# magic at byte 6 and accidentally matched i386 as well. Repair only our entry.
+# magic at byte 6 and accidentally matched i386 as well. Repair only our entry; an entry
+# registered without P by an older checkout is replaced too (the entry is shared by every
+# container of the Docker VM, so this changes argv[0] for their next execs as well).
 if [ -e /proc/sys/fs/binfmt_misc/qemu-mipsel ] && ! python3 -c '
 from pathlib import Path
 p = Path("/proc/sys/fs/binfmt_misc/qemu-mipsel").read_text().splitlines()
 raise SystemExit(not ({"magic 7f454c4601010000000000000000000002000800",
-                      "mask ffffffffffff00000000000000000000feffffff"} <= set(p)))
+                      "mask ffffffffffff00000000000000000000feffffff", "flags: PF"} <= set(p)))
 '; then
   printf '%s\n' -1 > /proc/sys/fs/binfmt_misc/qemu-mipsel
 fi
 if [ ! -e /proc/sys/fs/binfmt_misc/qemu-mipsel ]; then
-  printf '%s' ":qemu-mipsel:M::${MAGIC}:${MASK}:${QEMU}:F" > /proc/sys/fs/binfmt_misc/register \
-    && log "  registered" || err "  registration failed (already present?)"
+  printf '%s' ":qemu-mipsel:M::${MAGIC}:${MASK}:${QEMU}:FP" > /proc/sys/fs/binfmt_misc/register \
+    && log "  registered (argv[0] preserved)" || err "  registration failed (already present?)"
 fi
 
 # 2) Build + install the framebuffer/input ioctl shim.

@@ -38,7 +38,13 @@ breaking Docker until you restart Docker Desktop. This happened twice.
 
 Instead register a single mipsel entry with a mask that matches MIPS32-LE ELFs and
 nothing else (`emulator/scripts/10_setup_env.sh`). The mask ignores ELF bytes 6–15 so it matches
-busybox (which sets `EI_ABIVERSION`) as well as glibc binaries.
+busybox (which sets `EI_ABIVERSION`) as well as glibc binaries. The entry's flags are
+`FP`: `F` opens qemu at registration so execs inside the chroot work, `P` hands the
+caller's `argv[0]` to qemu (Linux 5.12+ `AT_FLAGS_PRESERVE_ARGV0`), so a guest program
+sees the `argv[0]` it was started with, as on the player, instead of its file's path.
+A program that re-executes itself until `argv[0]` is a bare name (diskOS's UI does)
+looped forever without it. The entry is shared by every container of the Docker VM:
+setup replaces an entry registered without `P`.
 
 ## The ioctl shim (`emulator/shims/fbshim.c`)
 
