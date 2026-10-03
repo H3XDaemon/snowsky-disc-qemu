@@ -7,6 +7,29 @@ import time
 from emulator.runtime.keys import Device
 
 
+PROGRAMS = {'mq_ui': 'event1', 'mq_player': 'event0'}   # name on the player -> input device it holds
+
+
+def holders(device, proc=Path('/proc')):
+    """PIDs of the stock-named programs that hold their input device: {'mq_ui': [...], 'mq_player': [...]}.
+
+    The name is /proc/<pid>/comm, what stock's own `pgrep -x` matches: a UI started
+    from another path (a boot layer's package) counts like stock's. A launcher or
+    helper that carries the name without the device does not.
+    """
+    found = {name: [] for name in PROGRAMS}
+    for pid in sorted(device.processes()):          # live processes in this exact chroot only
+        entry = proc / str(pid)
+        try:
+            name = (entry / 'comm').read_text().strip()
+            if name in PROGRAMS and any(fd.resolve() == device.root / 'dev/input' / PROGRAMS[name]
+                                        for fd in (entry / 'fd').iterdir()):
+                found[name].append(pid)
+        except OSError:
+            continue                                # process/fd disappeared during the snapshot
+    return found
+
+
 def ready(device, proc=Path('/proc')):
     # 15_controls.sh resets this marker before each boot: old pixels cannot count.
     try:
@@ -14,21 +37,7 @@ def ready(device, proc=Path('/proc')):
             return False
     except OSError:
         return False
-    expected = {b'/usr/bin/mq_ui': 'event1', b'/usr/bin/mq_player': 'event0'}
-    found = set()
-    for pid in device.processes():  # live processes in this exact chroot only
-        entry = proc / str(pid)
-        try:
-            args = (entry / 'cmdline').read_bytes().split(b'\0')
-            for program, event in expected.items():
-                if program in args and any(
-                    fd.resolve() == device.root / 'dev/input' / event
-                    for fd in (entry / 'fd').iterdir()
-                ):
-                    found.add(program)
-        except OSError:
-            continue  # process/fd disappeared during the snapshot
-    return found == set(expected)
+    return all(holders(device, proc).values())
 
 
 def wait_ready(device, timeout=60, clock=time.monotonic, sleep=time.sleep):

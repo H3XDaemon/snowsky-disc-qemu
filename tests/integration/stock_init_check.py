@@ -7,6 +7,7 @@ no firmware memory writes and no stock file is edited.
 import json
 import os
 from pathlib import Path
+import shutil
 import signal
 import subprocess
 import time
@@ -217,6 +218,36 @@ def check_guest_poweroff(device):
     assert hooks() == before
 
 
+def check_foreign_ui(device):
+    """A boot layer starts its ui package through /sbin/mq_ui: the stock name, another file."""
+    run('userdata_mount')
+    foreign = ROOT / 'usr/data/emu-ui/mq_ui'
+    foreign.parent.mkdir(exist_ok=True)
+    shutil.copyfile(ROOT / 'usr/bin/mq_ui', foreign)
+    foreign.chmod(0o755)
+    wrapper = ROOT / 'sbin/mq_ui'                      # fiio_init.sh finds it first on its PATH
+    wrapper.write_text('#!/bin/sh\nexec /usr/data/emu-ui/mq_ui "$@"\n')
+    wrapper.chmod(0o755)
+    try:
+        power('on', BOOT_KEYS='play')                  # 20_boot.sh waits for readiness: this UI's
+        pair = stock(device)
+        assert Path(f'/proc/{pair["mq_ui"]}/cmdline').read_bytes().split(b'\0')[1] == b'/usr/data/emu-ui/mq_ui'
+        assert guest('/emu/pinprobe').strip() == '0xF6EFE127', 'keys were not let go'
+        card_mounted()
+        # A restart in mid-run (stock's loop, a boot layer restarting its UI) is found the same way.
+        os.kill(pair['mq_ui'], signal.SIGKILL)
+        fresh = wait(lambda: stock(device), lambda now: set(now) == {'mq_ui', 'mq_player'} and
+                     not set(now.values()) & set(pair.values()), 'the pair was not restarted', 20)
+        assert Path(f'/proc/{fresh["mq_ui"]}/cmdline').read_bytes().split(b'\0')[1] == b'/usr/data/emu-ui/mq_ui'
+        wait(lambda: ready(device), bool, 'restarted foreign UI never counted as ready', 60)
+        card_mounted()
+    finally:
+        power('off')
+        run('userdata_mount')
+        wrapper.unlink()
+        shutil.rmtree(foreign.parent)
+
+
 def check_clean_poweroff_and_direct_boot(device):
     power('on')
     before = hooks()
@@ -246,6 +277,7 @@ def main():
     check_reboot()
     check_power_cut(device)
     check_guest_poweroff(device)
+    check_foreign_ui(device)
     check_clean_poweroff_and_direct_boot(device)
     subprocess.run(['bash', f'{SCRIPTS}/99_stop.sh'], check=True)
     print(json.dumps({'stock_init': 'passed', 'machine': machine.state(ROOT)}))
