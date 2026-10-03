@@ -92,7 +92,9 @@ Active firmware: **V2.57**. Local protocol research is finalized in
   (a time namespace), not from the Docker VM's boot. [Stock init](emulator/docs/stock-init.md).
 - Statically linked guest programs (boot-layer packages) see the framebuffer and
   input devices as stock's dynamic programs do: the image rebuilds Debian's qemu
-  with a patch that answers those ioctls (`QEMU_DEVICES`, default on).
+  with a patch that answers those ioctls (`QEMU_DEVICES`, default on). Readiness
+  now counts a frame flushed by the UI process itself, whenever it happened — a
+  static UI's single pan at start included.
   [Static programs](emulator/docs/stock-init.md#static-programs-and-the-devices).
 - An opt-in model of the 3.5 mm and 4.4 mm outputs that feeds stock's own
   detection (unplugging pauses playback), and `EMU_CPUS` to slow the whole

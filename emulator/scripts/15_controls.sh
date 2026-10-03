@@ -8,6 +8,7 @@ printf '11' > "$ROOTFS/emu/volume-buttons"
 # Raw pin levels for static guest programs: /dev/mem page of GPIO port B (see keys.md).
 python3 -B -m emulator.runtime.gpio reset >/dev/null
 printf '\377' > "$ROOTFS/emu/fb-live"
+: > "$ROOTFS/emu/fb-flush"     # PID of the process that flushed a frame (fbshim copy / static pan): none yet
 printf '0' > "$ROOTFS/emu/power-request"
 # Guest-visible /proc/<pid>/exe names the guest program, not qemu (fbshim): stock-init default.
 printf '%s' "${PROC_EXE:-0}" > "$ROOTFS/emu/proc-exe"

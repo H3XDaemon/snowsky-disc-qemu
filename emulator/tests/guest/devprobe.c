@@ -52,6 +52,7 @@ int main(int argc, char **argv){
   const char *fb = argc > 1 ? argv[1] : "/dev/fb0";
   struct fb_var_screeninfo var;
   struct fb_fix_screeninfo fix;
+  printf("pid: %d\n", getpid());                                     /* what the pan records in emu/fb-flush */
   int fd = open(fb, O_RDWR);
   if(fd < 0){ fail("open fb"); return 2; }
   if(ioctl(fd, FBIOGET_VSCREENINFO, &var) < 0){ fail("vinfo"); return 2; }

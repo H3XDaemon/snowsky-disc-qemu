@@ -8,7 +8,7 @@ its own patch series; built by emulator/docker/Dockerfile into
 * do_ioctl: while the guest's /emu/qemu-devices marker holds "1", ioctls on the
   REGULAR FILES /dev/fb0 and /dev/input/event* are answered with the emulated
   framebuffer (360x360x32, three sub-buffers; FBIOPAN_DISPLAY publishes
-  /emu/fb-live) and input devices (name from the guest's sysfs stub; EVIOCGBIT,
+  /emu/fb-live and the panning PID in /emu/fb-flush) and input devices (name from the guest's sysfs stub; EVIOCGBIT,
   EVIOCGABS 0..359 for the panel, EVIOCGID, EVIOCGRAB ...). Dynamically linked
   programs get the same answers from the preloaded emulator/shims/fbshim.c; a
   statically linked program (a boot-layer package) only reaches the kernel, which
@@ -32,7 +32,7 @@ See emulator/docs/stock-init.md (static programs) and emulator/docs/limits.md.
          if (len > lv)
              len = lv;
          if (len == 4) {
-@@ -5707,6 +5710,299 @@
+@@ -5707,6 +5710,304 @@
  
  /* ??? Implement proper locking for ioctls.  */
  /* do_ioctl() Must return target values and target errnos. */
@@ -49,6 +49,8 @@ See emulator/docs/stock-init.md (static programs) and emulator/docs/limits.md.
 + */
 +#define DISC_MARKER  "/emu/qemu-devices"
 +#define DISC_FB_LIVE "/emu/fb-live"
++#define DISC_FB_FLUSH "/emu/fb-flush"       /* who last flushed a frame: this process, by its own PID */
++#define DISC_PID_RECORD "%10d\n"           /* fixed width, written in place: a reader never sees it empty */
 +#define DISC_FB_W    360
 +#define DISC_FB_H    360
 +#define DISC_FB_VY   1080
@@ -195,8 +197,11 @@ See emulator/docs/stock-init.md (static programs) and emulator/docs/limits.md.
 +        }
 +        disc_fb_yoffset = yoffset;
 +        if (yoffset / DISC_FB_H < 2) {      /* stock and the viewer use the first two of three */
-+            char index = yoffset / DISC_FB_H;
++            char index = yoffset / DISC_FB_H, who[16];
 +            disc_write_marker(DISC_FB_LIVE, &index, 1);
++            /* The frame evidence boot_ready.py matches against the UI that holds the touch
++               device (NSpid): a pan is a static program's flush, as memcpy is fbshim's. */
++            disc_write_marker(DISC_FB_FLUSH, who, snprintf(who, sizeof who, DISC_PID_RECORD, (int)getpid()));
 +        }
 +        *ret = 0;
 +        return 1;

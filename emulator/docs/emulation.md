@@ -63,7 +63,8 @@ There is no real framebuffer/driver, so an `LD_PRELOAD`-style shim intercepts `i
 - all other `0x46xx` fb ioctls (PAN/BLANK/PUT) → return 0 (no-op)
 - Volume GPIO `pb13`/`pb14`, touch/LCD sleep/wake and DAC attenuation writes are emulated
   narrowly for physical controls; see [KEYS.md](keys.md).
-- Framebuffer `mmap`/`memcpy` calls are observed to publish `emu/fb-live`; actual memory
+- Framebuffer `mmap`/`memcpy` calls are observed to publish `emu/fb-live` (the buffer) and
+  `emu/fb-flush` (the copying process's PID, the readiness evidence); actual memory
   operations are delegated to the guest libc's `mmap64`/`memmove`.
 - libc `reboot` is intercepted for guest BusyBox poweroff/reboot: no shared-kernel reboot,
   only an `emu/power-request` consumed by the viewer's guest-scoped supervisor.
@@ -242,9 +243,10 @@ BGRX and the panel is 180°-rotated, so the converter reverses pixel order.
 ## Ordering / timing
 
 Start `mq_ui` first (creates `ui`), then `mq_player` (retries `mq_open("ui")`).
-Current `20_boot.sh` waits for network listeners, both input devices and a new
-framebuffer flush, then remounts the SD before capturing. Input/frame readiness
-has a 60-second timeout. The historical ~20–24 s boot measurement is not a fixed
+Current `20_boot.sh` waits for network listeners, both input devices and a
+framebuffer flush by the UI process that holds the touch device (`emu/fb-flush`,
+see [stock-init](stock-init.md#what-the-supervisor-does-around-the-stock-programs)),
+then remounts the SD before capturing. Input/frame readiness has a 60-second timeout. The historical ~20–24 s boot measurement is not a fixed
 startup delay; `./emulator/run.sh boot <seconds>` adds only an optional diagnostic wait.
 
 ## Known hardware errors

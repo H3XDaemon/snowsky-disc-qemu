@@ -113,7 +113,7 @@ if [ "${QEMU_DEVICES:-1}" = 1 ]; then
     else
       log "  static programs see /dev/fb0 and /dev/input (qemu)"
     fi
-    printf '\377' > "$ROOTFS/emu/fb-live"   # the probe's pan is not a frame
+    printf '\377' > "$ROOTFS/emu/fb-live"; : > "$ROOTFS/emu/fb-flush"   # the probe's pan is not a frame
   fi
 fi
 

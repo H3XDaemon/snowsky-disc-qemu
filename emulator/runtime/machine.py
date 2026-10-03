@@ -201,13 +201,12 @@ class Machine:
                 shell(self.root, f'bash {REPO}/emulator/scripts/16_network.sh reannounce')
             tail = data[-len(NETWORK_MARKER):] if NETWORK_MARKER not in data else b''
             # The stock pair unmounts the card while it starts and expects a hotplug
-            # remount. Once THIS UI process has drawn a frame, keep the card mounted
-            # until the start-up has settled.
+            # remount. Once THIS UI process has drawn a frame (ready() matches the frame
+            # marker's PID to it, so a frame it drew before being noticed counts), keep
+            # the card mounted until the start-up has settled.
             current = self.ui_pid(device)
             if current != ui:
                 ui, waiting, settled = current, current is not None, None
-                if waiting:
-                    (self.root / 'emu/fb-live').write_bytes(b'\xff')
             elif waiting and ready(device):
                 # Stock mounts a card whose partition it can enumerate by itself, a moment
                 # after the player starts: give it that moment before stepping in.

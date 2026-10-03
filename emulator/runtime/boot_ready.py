@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Wait for the guest's input devices and first framebuffer flush, without TCP probes."""
+"""Wait for the guest's input devices and the UI's first framebuffer flush, without TCP probes."""
 import os
 from pathlib import Path
 import time
@@ -30,14 +30,46 @@ def holders(device, proc=Path('/proc')):
     return found
 
 
-def ready(device, proc=Path('/proc')):
-    # 15_controls.sh resets this marker before each boot: old pixels cannot count.
+def flusher(device):
+    """PID, in its own namespace, of the process that last flushed a frame; None before the first.
+
+    fbshim writes emu/fb-flush on a dynamic program's first copy into the framebuffer
+    (and every buffer switch); the rebuilt qemu writes it on a static program's
+    FBIOPAN_DISPLAY. Both write a fixed-width "%10d\\n" in place, so a poll never reads
+    it empty or torn. 15_controls.sh empties it before each power-on.
+    """
     try:
-        if (device.root / 'emu/fb-live').read_bytes() not in (b'\x00', b'\x01'):
-            return False
-    except OSError:
+        return int((device.root / 'emu/fb-flush').read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def own_pid(pid, proc=Path('/proc')):
+    """The PID a process has in its own namespace: the last NSpid entry (a stock-init
+    guest lives in a PID namespace; a direct boot shares the container's)."""
+    for line in (proc / str(pid) / 'status').read_text().splitlines():
+        if line.startswith('NSpid:'):
+            return int(line.split()[-1])
+    return pid
+
+
+def ready(device, proc=Path('/proc')):
+    """Both input devices held, and a frame flushed by THIS UI process (not a predecessor's,
+    not a probe's): old pixels cannot count, and a UI that flushed before anyone noticed it
+    counts all the same."""
+    found = holders(device, proc)
+    if not all(found.values()):
         return False
-    return all(holders(device, proc).values())
+    flushed = flusher(device)
+    if flushed is None:
+        return False
+    for pid in found['mq_ui']:
+        try:
+            if own_pid(pid, proc) == flushed:
+                return True
+        except (OSError, ValueError):
+            continue
+    return False
 
 
 def wait_ready(device, timeout=60, clock=time.monotonic, sleep=time.sleep):

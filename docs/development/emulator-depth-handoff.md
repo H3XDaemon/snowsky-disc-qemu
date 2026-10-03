@@ -72,7 +72,11 @@ Reference: [stock init, power events and `/usr/data`](../../emulator/docs/stock-
 - Readiness (the card remount, the release of power-on keys, `20_boot.sh`'s
   wait) recognises the UI by its name `mq_ui` and the touch device it holds,
   so a `ui` package started through `/sbin/mq_ui` counts; a launcher that only
-  carries the name does not.
+  carries the name does not. The frame evidence is per process (`emu/fb-flush`,
+  the flusher's own-namespace PID): a dynamic UI's first copy into the
+  framebuffer, a static UI's first `FBIOPAN_DISPLAY` — whenever it happens,
+  also before the supervisor sees the process. A static UI must pan at least
+  once (diskOS does, at start); drawing into the mapping alone is invisible.
 - The card is not mounted while `rcS` runs. With `SDCARD_PARTITION=1` stock
   mounts it a moment after `mq_player` starts; with the default image the
   emulator mounts it a few seconds after the UI is up. A boot stage that needs
@@ -228,6 +232,10 @@ Additions only; nothing was renamed or removed.
   `set_sd(inserted, force=False)`. The SD netlink port is the player's PID in its
   own namespace. Error text for a non-block card node changed slightly.
 - `emulator.runtime.audio`: new `output_state()`.
+- `emulator.runtime.boot_ready`: `ready()` keeps its signature; it now requires a
+  frame flushed by the UI holder itself (`emu/fb-flush` PID = holder's `NSpid`)
+  and no longer reads `emu/fb-live`, which stays the viewer's buffer hint and is
+  not reset by the supervisor any more. New `flusher()`, `own_pid()`.
 - New modules: `emulator.runtime.gpio`, `machine`, `guest_init`, `battery`,
   `settings`, `power_watch`, `card`, `network`, `abi`.
 - `ci/cleanup.sh` also detaches a `/usr/data` image.

@@ -108,9 +108,17 @@ watch loop restarted it):
 - **Keys** held from power-on are released when the UI is up, or after 60 seconds.
 - "The UI is up" means: a process named `mq_ui` (`/proc/<pid>/comm`, what
   stock's own `pgrep -x` matches) holds the touch device and a process named
-  `mq_player` holds the key device, and a frame was drawn since power-on. A UI
-  started from another file (a boot layer's `ui` package through `/sbin/mq_ui`)
-  counts like stock's; a launcher or watcher that only carries the name does not.
+  `mq_player` holds the key device, and **that UI process** flushed a frame.
+  The frame marker `emu/fb-flush` names the flusher by the PID it has in its
+  own namespace (`fbshim` writes it on a dynamic program's first copy into the
+  framebuffer and every buffer switch; the rebuilt qemu on a static program's
+  `FBIOPAN_DISPLAY`); `ready()` compares it with the holder's `NSpid`, so a frame
+  flushed before the supervisor noticed the process counts, a predecessor's or a
+  probe's does not, and nothing is reset between restarts (`15_controls.sh`
+  empties the marker at power-on). A UI started from another file (a boot
+  layer's `ui` package through `/sbin/mq_ui`) counts like stock's; a launcher or
+  watcher that only carries the name does not. A static UI that never pans and
+  only writes into the mapping has no observable flush here and never counts.
 - **Lifetime**: `GUEST_TTL` seconds after power-on the guest is cut; `0` is no limit.
 
 ### Commands in a running guest
@@ -166,7 +174,9 @@ The image's interpreter is Debian's qemu 7.2 rebuilt with one patch
 while the guest marker `/emu/qemu-devices` holds `1`, qemu itself answers the
 `ioctl`s of **regular files at those paths** — the same geometry as `fbshim`
 (360×360×32, three sub-buffers, `ingenicfb`), `FBIOPAN_DISPLAY` publishing
-`emu/fb-live` for the viewer and reported back by `FBIOGET_VSCREENINFO`,
+`emu/fb-live` for the viewer and `emu/fb-flush` for readiness (the panning
+process is the flusher, as the copying process is for `fbshim`) and reported
+back by `FBIOGET_VSCREENINFO`,
 `FBIOBLANK` accepted; for the input nodes `EVIOCGNAME` from the sysfs stub
 (`cst816t`, `x2000_key`), `EVIOCGVERSION`, `EVIOCGID` (I²C / host bus),
 `EVIOCGBIT` (`EV_KEY`+`EV_ABS` with `BTN_TOUCH` and the five axes the
@@ -300,8 +310,9 @@ and a static MIPS pin probe:
 
 - power-on keys seen by the static program at `S22` and released after boot;
 - a static program sees the framebuffer and both input devices (setup's
-  `/emu/devprobe`), its pan reaches `emu/fb-live`, and `QEMU_DEVICES=0`
-  (marker `0`) restores the kernel's `ENOTTY` without a reboot;
+  `/emu/devprobe`), its pan reaches `emu/fb-live` and `emu/fb-flush` in the
+  guest's namespace, and `QEMU_DEVICES=0` (marker `0`) restores the kernel's
+  `ENOTTY` without a reboot;
 - `S21` mounted the image before the `S22` hook; hook `PATH`;
 - the pair started by `fiio_init.sh`, `mq_ui` first; names, PID 1, hostname;
 - `start-stop-daemon -x` refuses a second start; `/proc/<pid>/exe`;
