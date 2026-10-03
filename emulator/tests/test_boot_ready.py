@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from emulator.runtime.boot_ready import ready, wait_ready
+from emulator.runtime.boot_ready import holders, ready, wait_ready
 
 
 class BootReadyTests(unittest.TestCase):
@@ -21,6 +21,7 @@ class BootReadyTests(unittest.TestCase):
             entry = self.proc / str(pid)
             (entry / 'fd').mkdir(parents=True)
             (entry / 'cmdline').write_bytes(f'qemu\0/usr/bin/{program}\0'.encode())
+            (entry / 'comm').write_text(program + '\n')
             (self.root / 'dev/input' / event).touch()
             (entry / 'fd/3').symlink_to('anon_inode:[eventpoll]')
             (entry / 'fd/4').symlink_to(self.root / 'dev/input' / event)
@@ -45,7 +46,22 @@ class BootReadyTests(unittest.TestCase):
         self.assertFalse(ready(self.device, self.proc))
         (self.proc / '2/fd/4').unlink()
         (self.proc / '2/fd/4').symlink_to(self.root / 'dev/input/event0')
-        (self.proc / '1/cmdline').write_bytes(b'qemu\0/usr/bin/mq_ui_old\0')
+        (self.proc / '1/comm').write_text('mq_ui_old\n')
+        self.assertFalse(ready(self.device, self.proc))
+
+    def test_a_ui_from_another_path_counts_and_a_launcher_with_the_name_does_not(self):
+        """A boot layer starts its ui package through /sbin/mq_ui: same name, another file."""
+        (self.proc / '1/cmdline').write_bytes(b'qemu\0/usr/data/disc-boot/ui/a/mq_ui\0')
+        self.assertTrue(ready(self.device, self.proc))
+        watcher = self.proc / '0'                           # the launcher keeps the name, holds no device
+        (watcher / 'fd').mkdir(parents=True)
+        (watcher / 'comm').write_text('mq_ui\n')
+        (watcher / 'cmdline').write_bytes(b'/opt/disc-boot/disc-boot\0')
+        self.device.processes.return_value = [0, 1, 2]
+        self.assertEqual(holders(self.device, self.proc), {'mq_ui': [1], 'mq_player': [2]})
+        self.assertTrue(ready(self.device, self.proc))
+        (self.proc / '1/fd/4').unlink()
+        self.assertEqual(holders(self.device, self.proc)['mq_ui'], [])
         self.assertFalse(ready(self.device, self.proc))
 
     def test_exit_or_missing_marker_is_not_ready(self):
