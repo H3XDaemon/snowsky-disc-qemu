@@ -11,7 +11,7 @@ does, and the power events and storage options that go with it.
 | Who restarts a crashed program | nobody | the stock five-second watch loop |
 | Image hooks (`S22*`, `S99*`) | not run | run in `rcS` order; `stop` through `rcK` |
 | `/tmp`, `/run` | directories of the work volume | fresh tmpfs at every power-on |
-| Guest PIDs, queues, hostname | the container's | the guest's own namespaces |
+| Guest PIDs, queues, hostname, uptime | the container's | the guest's own namespaces |
 | Idle power-off (`poweroff -f`) | needs the viewer or another supervisor | served by the guest's PID 1 |
 
 ```sh
@@ -31,7 +31,7 @@ and `emulator/scripts/25_power.sh on|reboot|off|cut [--unsynced]|status`.
 ```
 container
   └─ emulator.runtime.machine run        supervisor: one per powered guest
-       └─ unshare --pid --ipc --uts
+       └─ unshare --pid --ipc --uts --time
             └─ emulator.runtime.guest_init   PID 1 of the guest, comm "init"
                  └─ chroot rootfs /etc/init.d/rcS    (qemu-user, as before)
                       ├─ S10mdev … S98FIIO → fiio_init.sh → mq_ui, mq_player, watch loop
@@ -58,6 +58,13 @@ one of the same name in `/usr/bin`.
 
 PID 1 also reaps orphans. Without that a killed `mq_ui` stays a zombie that
 `pgrep -x mq_ui` still finds, and the watch loop never restarts it.
+
+The guest also gets a **time namespace** whose `CLOCK_BOOTTIME` and
+`CLOCK_MONOTONIC` start at this power-on: `/proc/uptime` and `sysinfo()` count
+from the boot, as on a player, not from the Docker VM's boot (days). A reboot
+starts them again. The wall clock stays the host's
+([not adjustable](environment.md#guest-clock-not-adjustable)). `guest_run`
+enters that namespace too, so its commands see the same uptime.
 
 ### What is stubbed
 

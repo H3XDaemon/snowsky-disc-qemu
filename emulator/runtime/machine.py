@@ -28,6 +28,13 @@ NETWORK_MARKER = b'Network detect thread started'
 NAMESPACES = ['unshare', '--pid', '--ipc', '--uts', '--fork', '--kill-child']
 
 
+def time_namespace():
+    """A time namespace whose uptime starts now: /proc/uptime, CLOCK_BOOTTIME and
+    CLOCK_MONOTONIC count from this power-on, not from the Docker VM's boot."""
+    seconds = int(float(Path('/proc/uptime').read_text().split()[0]))
+    return ['--time', f'--boottime=-{max(seconds - 1, 0)}', f'--monotonic=-{max(seconds - 1, 0)}']
+
+
 def state(root):
     try:
         return json.loads((Path(root) / STATE).read_text())
@@ -159,7 +166,7 @@ class Machine:
         own = network.namespace(self.root)      # NETWORK=isolated: no interface but loopback
         self.child = subprocess.Popen(
             (['nsenter', f'--net=/run/netns/{own}', '--'] if own else []) +
-            NAMESPACES + [sys.executable, '-B', '-m', 'emulator.runtime.guest_init'],
+            NAMESPACES + time_namespace() + [sys.executable, '-B', '-m', 'emulator.runtime.guest_init'],
             stdin=subprocess.DEVNULL, stdout=console, stderr=subprocess.STDOUT,
             env={**os.environ, 'ROOTFS': str(self.root)}, cwd='/')
 

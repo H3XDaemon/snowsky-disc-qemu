@@ -30,6 +30,9 @@ class MachineTests(unittest.TestCase):
         self.addCleanup(process.wait)
         self.addCleanup(process.kill)
         (self.root / 'emu/init.pid').write_text(f'{process.pid}\n')
+        deadline = time.monotonic() + 5                 # its command line appears once it has started
+        while machine.init_pid(self.root) != process.pid and time.monotonic() < deadline:
+            time.sleep(.05)
         return process
 
     def test_init_environment_is_busybox_init(self):
@@ -92,6 +95,12 @@ class MachineTests(unittest.TestCase):
         self.assertIsNone(device.transition)
         self.assertEqual((self.root / 'emu/power-request').read_bytes(), b'1')
 
+    def test_time_namespace_starts_the_guest_uptime_near_zero(self):
+        with patch('emulator.runtime.machine.Path.read_text', return_value='1328973.44 1200.00\n'):
+            self.assertEqual(machine.time_namespace(), ['--time', '--boottime=-1328972', '--monotonic=-1328972'])
+        with patch('emulator.runtime.machine.Path.read_text', return_value='0.50 0.00\n'):
+            self.assertEqual(machine.time_namespace(), ['--time', '--boottime=-0', '--monotonic=-0'])
+
     def test_supervisor_failure_stops_the_guest_and_restores_the_view(self):
         board = machine.Machine(self.root)
         with patch.object(board, 'power_on', side_effect=RuntimeError('boom')), \
@@ -149,7 +158,7 @@ class ShellTests(unittest.TestCase):
         self.addCleanup(process.kill)
         (self.root / 'emu/init.pid').write_text(f'{process.pid}\n')
         words = self.guest_run('15', '/bin/ps')
-        self.assertEqual(words[:8], ['nsenter', '--target', str(process.pid), '--pid', '--ipc', '--uts',
+        self.assertEqual(words[:9], ['nsenter', '--target', str(process.pid), '--pid', '--ipc', '--uts', '--time',
                                      '--', 'timeout'])
         (self.root / 'emu/init.pid').write_text('1\n')                # some other live process
         self.assertEqual(self.guest_run('15', '/bin/ps')[0], 'timeout')
