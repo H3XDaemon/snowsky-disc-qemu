@@ -49,18 +49,16 @@ the rule for programs meant for the player.
 ## Socket error numbers
 
 MIPS has its own `errno` numbering. qemu-user translates the error a system call
-returns, but qemu 7.2 does **not** translate the value read with
+returns, but Debian's qemu 7.2 does **not** translate the value read with
 `getsockopt(SO_ERROR)`: after a refused non-blocking `connect` a guest program
-reads the host's `ECONNREFUSED` (111) where the player returns 146. The blocking
-`connect` path returns 146 correctly. `emulator/tests/guest/soerror.c` shows
-both, and a firmware-free test pins the behaviour so an image update that fixes
-it is noticed. Debian 13's qemu-user translates the value correctly; the pinned
-qemu is not replaced here, because one qemu registration serves every emulator
-container of the Docker VM and a version change needs the full regression.
-
-Until then: take the result from the system call's own `errno` (a bounded
-blocking `connect`, or `connect` again on the non-blocking socket), not from
-`SO_ERROR`. Do not special-case 111 in code that ships to the player.
+read the host's `ECONNREFUSED` (111) where the player returns 146. The image's
+rebuilt interpreter ([`emulator/docker/qemu`](../docker/qemu/snowsky-disc-devices.patch))
+translates it, so both paths now return 146; `emulator/tests/guest/soerror.c`
+shows the difference against Debian's binary, and a firmware-free test pins
+both. A program that must also run under an unpatched qemu-user (another
+stack's container registers the shared entry first, or
+`QEMU=/usr/bin/qemu-mipsel-static`) can still take the result from the system
+call's own `errno`. Do not special-case 111 in code that ships to the player.
 
 ## Slowing the guest
 

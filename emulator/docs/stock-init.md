@@ -133,7 +133,7 @@ A program started this way is part of the guest: `reboot`, `off` and `cut` end i
 | --- | --- | --- |
 | `/proc/<pid>/comm`, `pgrep -x`, `pidof`, `killall` | program name | **same** (`mq_ui`, `mq_player`, `init` for PID 1) |
 | `/proc/<pid>/exe` through BusyBox or any glibc program | program path | **same in stock-init mode**: `fbshim` reports the guest program instead of `qemu-mipsel-static` (`emu/proc-exe`, `PROC_EXE=1` enables it for a direct boot too) |
-| `/proc/<pid>/exe` read by a **static** program | program path | `/usr/bin/qemu-mipsel-static`: no shim is loaded into a static program |
+| `/proc/<pid>/exe` read by a **static** program | program path | `/usr/local/bin/qemu-mipsel-static`: no shim is loaded into a static program |
 | `/proc/<pid>/cmdline` | `argv` | `qemu-mipsel-static`, the program's **full path**, then `argv[0]` and the arguments |
 | `argv[0]` inside the program | as started (`mq_ui`) | **same**: the binfmt entry's `P` flag hands the caller's `argv[0]` to qemu |
 
@@ -151,6 +151,51 @@ stacks' next execs as well (an improvement for them too, and nothing in this
 repository or its known consumers reads the guest's `argv[0]` through the host).
 For a script the reported `exe` is the interpreter as invoked (`/bin/sh`), not the
 resolved `/bin/busybox`.
+
+## Static programs and the devices
+
+The guest's `/dev/fb0`, `/dev/input/event0` and `event1` are regular files; no
+kernel driver stands behind them. A dynamically linked program gets their
+`ioctl`s answered by the preloaded `fbshim` (`/etc/ld.so.preload`). A
+**statically linked** program (a boot-layer package, diskOS's UI as built for the
+player) never runs the guest's `ld.so`, so it reached the kernel and got `ENOTTY`:
+`vinfo: Not a tty`, no touch panel, never ready.
+
+The image's interpreter is Debian's qemu 7.2 rebuilt with one patch
+([`emulator/docker/qemu/snowsky-disc-devices.patch`](../docker/qemu/snowsky-disc-devices.patch)):
+while the guest marker `/emu/qemu-devices` holds `1`, qemu itself answers the
+`ioctl`s of **regular files at those paths** — the same geometry as `fbshim`
+(360×360×32, three sub-buffers, `ingenicfb`), `FBIOPAN_DISPLAY` publishing
+`emu/fb-live` for the viewer and reported back by `FBIOGET_VSCREENINFO`,
+`FBIOBLANK` accepted; for the input nodes `EVIOCGNAME` from the sysfs stub
+(`cst816t`, `x2000_key`), `EVIOCGVERSION`, `EVIOCGID` (I²C / host bus),
+`EVIOCGBIT` (`EV_KEY`+`EV_ABS` with `BTN_TOUCH` and the five axes the
+emulator sends; the key codes of `keys.md`), `EVIOCGABS` (0..359 for the panel's
+position axes, `EINVAL` on the key device, as the kernel answers), `EVIOCGKEY`
+and the other state reads (nothing held), `EVIOCGRAB` and the setters accepted.
+Events are read from the files as before (`inject.py`, `keys.py` append them).
+Character devices, other files and dynamically linked programs are untouched;
+the shim still answers first for them.
+
+- `QEMU_DEVICES=1` (default, `emulator/.env`) writes the marker at setup and
+  every power-on; `QEMU_DEVICES=0` leaves the kernel's `ENOTTY` (the previous
+  behaviour). `QEMU=/usr/bin/qemu-mipsel-static` selects Debian's unpatched
+  interpreter altogether.
+- The binfmt entry follows the chosen interpreter: setup replaces an entry whose
+  `interpreter` line differs. The kernel opened the interpreter at registration,
+  so after an image rebuild it may still hold the previous binary: setup runs the
+  static probe `/emu/devprobe` (`emulator/tests/guest/devprobe.c`) through the
+  entry and re-registers once if the devices are not answered. An image built
+  without the stage reports `QEMU_DEVICES=1 but … lacks the device patch`.
+- Firmware-free: `emulator/tests/test_devices.py` runs the probe under
+  `qemu-mipsel-static -L <sysroot>`; the stock-init scenario below runs it in the
+  live guest and flips the marker.
+
+The patch also makes `getsockopt(SO_ERROR)` return guest errnos
+([limits](limits.md#socket-error-numbers)). What it does not do: a static program
+still reads `qemu-mipsel-static` from `/proc/<pid>/exe` (table above), and the
+audio interposers (`asndshim`, `tinyshim`) remain preload-only, so a static
+program that opens the DAC itself is not covered.
 
 ## Power events
 
@@ -254,6 +299,9 @@ guest with an 83 MiB `/usr/data` image and checks, with two generated init hooks
 and a static MIPS pin probe:
 
 - power-on keys seen by the static program at `S22` and released after boot;
+- a static program sees the framebuffer and both input devices (setup's
+  `/emu/devprobe`), its pan reaches `emu/fb-live`, and `QEMU_DEVICES=0`
+  (marker `0`) restores the kernel's `ENOTTY` without a reboot;
 - `S21` mounted the image before the `S22` hook; hook `PATH`;
 - the pair started by `fiio_init.sh`, `mq_ui` first; names, PID 1, hostname;
 - `start-stop-daemon -x` refuses a second start; `/proc/<pid>/exe`;

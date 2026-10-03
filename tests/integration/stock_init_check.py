@@ -1,8 +1,9 @@
 """Stock-init boot, power events and power-on keys on a disposable V2.57 guest.
 
 Needs a guest prepared with USERDATA_MB (ci/integration.sh, CI_SCENARIO=stock-init).
-Adds two generated init hooks and a static pin probe to the disposable rootfs;
-no firmware memory writes and no stock file is edited.
+Adds two generated init hooks and a static pin probe to the disposable rootfs
+(the static device probe comes from setup); no firmware memory writes and no
+stock file is edited.
 """
 import json
 import os
@@ -165,6 +166,26 @@ def check_boot(device):
     return pair
 
 
+def check_static_devices():
+    """A static program loads no shim: the rebuilt qemu answers its device ioctls (#54)."""
+    marker, live = ROOT / 'emu/qemu-devices', ROOT / 'emu/fb-live'
+    assert marker.read_text() == '1'
+    shown = live.read_bytes()
+    lines = guest('/emu/devprobe').splitlines()
+    assert lines[0] == 'fb: 360x360 virtual 360x1080 bpp 32 offsets r16 g8 b0 a24', lines
+    assert lines[1] == 'fix: ingenicfb smem 1555200 line 1440 visual 2', lines
+    assert 'pan: yoffset 360' in lines and 'touch name: cst816t' in lines and 'keys name: x2000_key' in lines, lines
+    assert 'abs 0: 0..359' in lines and 'keys: 0x14a' in lines, lines
+    assert live.read_bytes() == b'\x01'                 # the probe's pan reached the viewer's marker
+    live.write_bytes(shown)
+    marker.write_text('0')                              # QEMU_DEVICES=0: the kernel's answer, live
+    try:
+        failed = run('guest_run 20 /emu/devprobe || echo "rc=$?"')
+        assert failed.splitlines() == ['vinfo: Inappropriate ioctl for device', 'rc=2'], failed
+    finally:
+        marker.write_text('1')
+
+
 def check_watch_loop(device, pair):
     os.kill(pair['mq_ui'], signal.SIGKILL)
     killed = time.monotonic()
@@ -292,6 +313,7 @@ def main():
     prepare()
     check_pins_without_boot(device)
     pair = check_boot(device)
+    check_static_devices()
     check_watch_loop(device, pair)
     check_reboot()
     check_power_cut(device)

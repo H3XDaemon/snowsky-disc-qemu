@@ -39,6 +39,7 @@ services:
       SDCARD_PARTITION: ${SDCARD_PARTITION:-0} # 1 = MBR + one partition, like a real card
       JACK: ${JACK:-}                   # 3.5, 4.4 or none: analog-output model; off removes it
       FPU_GUARD: ${FPU_GUARD:-reject}   # reject, warn or off: hard-float programs that trap on the player
+      QEMU_DEVICES: ${QEMU_DEVICES:-1}  # 1 = static programs see /dev/fb0 and /dev/input (rebuilt qemu); 0 = ENOTTY
       # Guest environment presets (emulator/docs/environment.md); empty keeps the defaults.
       POWER_WATCH: ${POWER_WATCH:-0}    # 1 = direct boot serves the idle power-off without a viewer
       USB_POWER: ${USB_POWER:-}         # 1/0 = cable state at every boot; empty = stored state

@@ -86,6 +86,12 @@ Project `snowsky-disc-qemu`, default container/image names and volume
 `snowsky-disc-work` are unchanged. Guest `/emu` paths are internal runtime markers,
 not Compose service names, and remain unchanged.
 
+The image now carries a rebuilt qemu (`/usr/local/bin/qemu-mipsel-static`,
+[static programs](stock-init.md#static-programs-and-the-devices)). After pulling
+that change, recreate the container with `./emulator/run.sh compose up -d --build`;
+a container from the previous image keeps working and its setup says
+`QEMU_DEVICES=1 but … lacks the device patch` until it is rebuilt.
+
 ## Build and disposable checks
 
 ```sh

@@ -24,20 +24,27 @@ MASK='\xff\xff\xff\xff\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xfe\xff\x
 # the player's kernel keeps it. Without P every guest program saw its file's path as argv[0].
 # Older printf used the registration as its FORMAT: embedded NULs truncated the
 # magic at byte 6 and accidentally matched i386 as well. Repair only our entry; an entry
-# registered without P by an older checkout is replaced too (the entry is shared by every
-# container of the Docker VM, so this changes argv[0] for their next execs as well).
-if [ -e /proc/sys/fs/binfmt_misc/qemu-mipsel ] && ! python3 -c '
+# registered without P, or with another interpreter path, by an older checkout is replaced
+# too (the entry is shared by every container of the Docker VM, so this changes argv[0]
+# and the interpreter for their next execs as well; both interpreters run stock alike).
+binfmt_register(){
+  if [ -e /proc/sys/fs/binfmt_misc/qemu-mipsel ] && ! QEMU="$QEMU" python3 -c '
+import os
 from pathlib import Path
 p = Path("/proc/sys/fs/binfmt_misc/qemu-mipsel").read_text().splitlines()
 raise SystemExit(not ({"magic 7f454c4601010000000000000000000002000800",
-                      "mask ffffffffffff00000000000000000000feffffff", "flags: PF"} <= set(p)))
+                      "mask ffffffffffff00000000000000000000feffffff", "flags: PF",
+                      "interpreter " + os.environ["QEMU"]} <= set(p)))
 '; then
-  printf '%s\n' -1 > /proc/sys/fs/binfmt_misc/qemu-mipsel
-fi
-if [ ! -e /proc/sys/fs/binfmt_misc/qemu-mipsel ]; then
-  printf '%s' ":qemu-mipsel:M::${MAGIC}:${MASK}:${QEMU}:FP" > /proc/sys/fs/binfmt_misc/register \
-    && log "  registered (argv[0] preserved)" || err "  registration failed (already present?)"
-fi
+    printf '%s\n' -1 > /proc/sys/fs/binfmt_misc/qemu-mipsel
+  fi
+  if [ ! -e /proc/sys/fs/binfmt_misc/qemu-mipsel ]; then
+    printf '%s' ":qemu-mipsel:M::${MAGIC}:${MASK}:${QEMU}:FP" > /proc/sys/fs/binfmt_misc/register \
+      && log "  registered $QEMU (argv[0] preserved)" || err "  registration failed (already present?)"
+  fi
+}
+binfmt_register
+log "  $("$QEMU" -version | head -1)"
 
 # 2) Build + install the framebuffer/input ioctl shim.
 log "Building shims"
@@ -85,6 +92,30 @@ mkdir -p "$ROOTFS/dev/input" \
 : > "$ROOTFS/dev/input/event0"; : > "$ROOTFS/dev/input/event1"
 echo x2000_key > "$ROOTFS/sys/class/input/event0/device/name"   # GPIO keys
 echo cst816t   > "$ROOTFS/sys/class/input/event1/device/name"   # capacitive touch
+
+# 4b) A static program loads no shim: the rebuilt qemu answers these ioctls itself while
+#     /emu/qemu-devices (QEMU_DEVICES, 15_controls.sh) holds 1. The probe runs through the
+#     binfmt entry, which the kernel opened at registration: after an image rebuild it may
+#     still hold the previous interpreter, so a failed probe re-registers once and retries.
+#     The probe is hard-float with an executable stack, as the stock programs are (FPU guard).
+if [ "${QEMU_DEVICES:-1}" = 1 ]; then
+  if ! qemu_has_devices; then
+    err "QEMU_DEVICES=1 but $QEMU lacks the device patch: static programs get ENOTTY from /dev/fb0" \
+        "(rebuild the image from emulator/docker)"
+  else
+    mipsel-linux-gnu-gcc -static -O1 -Wl,-z,execstack -o "$ROOTFS/emu/devprobe" "$REPO/emulator/tests/guest/devprobe.c"
+    if ! guest_run 20 /emu/devprobe >/dev/null 2>&1; then
+      log "  the registered interpreter does not answer device ioctls: re-registering $QEMU"
+      printf '%s\n' -1 > /proc/sys/fs/binfmt_misc/qemu-mipsel
+      binfmt_register
+      guest_run 20 /emu/devprobe >/dev/null 2>&1 && log "  static programs see /dev/fb0 and /dev/input" \
+        || err "  static programs still get ENOTTY from /dev/fb0 (see emulator/docs/stock-init.md)"
+    else
+      log "  static programs see /dev/fb0 and /dev/input (qemu)"
+    fi
+    printf '\377' > "$ROOTFS/emu/fb-live"   # the probe's pan is not a frame
+  fi
+fi
 
 # char-device stubs mq_player opens. fbshim handles volume GPIO reads; other missing
 # hardware ioctls still fail. Without /dev/gpio, mq_player aborts BEFORE it

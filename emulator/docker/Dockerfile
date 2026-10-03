@@ -6,6 +6,34 @@
 #
 # Works on both amd64 and arm64 Docker hosts (Debian is multi-arch; qemu-user-static
 # runs the MIPS guest regardless of host arch).
+
+# Stage 1: Debian's own qemu 7.2 source, rebuilt for mipsel user mode with one patch
+# (qemu/snowsky-disc-devices.patch): a statically linked guest program gets the
+# emulated framebuffer/input ioctls that the preload shim gives dynamic ones, and
+# getsockopt(SO_ERROR) returns guest errnos. The dated snapshot below pins the source;
+# the explicit version makes a snapshot change fail here, not at runtime.
+FROM debian:12@sha256:6ebd97fa83deb272194a2cf015b3d26a4d538e9ad3a7a79d544c8af5b0a01443 AS qemu
+ENV DEBIAN_FRONTEND=noninteractive
+COPY debian.sources /etc/apt/sources.list.d/debian.sources
+RUN sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources \
+ && apt-get update && apt-get install -y --no-install-recommends \
+      dpkg-dev build-essential ninja-build meson python3 pkg-config \
+      libglib2.0-dev libpcre2-dev zlib1g-dev libffi-dev libmount-dev libblkid-dev \
+      libselinux1-dev libcap-ng-dev libattr1-dev \
+ && mkdir /build && cd /build \
+ && apt-get source --only-source qemu=1:7.2+dfsg-7+deb12u18 \
+ && rm -rf /var/lib/apt/lists/*
+COPY qemu/snowsky-disc-devices.patch /build/
+RUN cd /build/qemu-7.2+dfsg \
+ && patch -p1 < ../snowsky-disc-devices.patch \
+ && ./configure --static --disable-system --disable-tools --disable-guest-agent --disable-docs \
+      --disable-werror --target-list=mipsel-linux-user \
+      --with-pkgversion='Debian 1:7.2+dfsg-7+deb12u18, snowsky-disc-devices' \
+ && ninja -C build qemu-mipsel \
+ && install -m 755 build/qemu-mipsel /qemu-mipsel-static \
+ && /qemu-mipsel-static -version | grep -q snowsky-disc-devices
+
+# Stage 2: the runtime image.
 FROM debian:12@sha256:6ebd97fa83deb272194a2cf015b3d26a4d538e9ad3a7a79d544c8af5b0a01443
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -42,6 +70,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       curl \
       ca-certificates \
  && rm -rf /var/lib/apt/lists/*
+
+# The patched interpreter (stage 1) is what emulator/scripts/lib.sh selects and registers;
+# Debian's /usr/bin/qemu-mipsel-static stays for QEMU=/usr/bin/qemu-mipsel-static.
+COPY --from=qemu /qemu-mipsel-static /usr/local/bin/qemu-mipsel-static
+RUN /usr/local/bin/qemu-mipsel-static -version | grep -q snowsky-disc-devices
 
 # /work holds the extracted rootfs and runtime state (mount a host dir or volume here
 # so it survives container restarts). /repo is this repository (mount read-write).

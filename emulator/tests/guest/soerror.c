@@ -1,5 +1,6 @@
 /* Probe for a qemu-user translation gap: SO_ERROR after a refused non-blocking connect.
-   The pinned qemu 7.2 returns the HOST errno (111); MIPS ECONNREFUSED is 146. */
+   Debian's qemu 7.2 returns the HOST errno (111); MIPS ECONNREFUSED is 146. The image's
+   rebuilt interpreter (emulator/docker/qemu) translates it. */
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
