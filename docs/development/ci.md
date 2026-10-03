@@ -126,7 +126,11 @@ No secrets, firmware, privileged containers, cache upload or image publishing.
 
 - Validate the regular Compose definition.
 - Build `emulator/docker/Dockerfile`: multi-architecture Debian image pinned by index digest,
-  Debian and security packages pinned via the 2026-09-10 snapshot.
+  Debian and security packages pinned via the 2026-09-10 snapshot. Its first stage
+  rebuilds Debian's qemu 7.2 source (pinned version, same snapshot) with
+  `emulator/docker/qemu/snowsky-disc-devices.patch` for mipsel user mode: about a
+  minute of compilation on a laptop, a few on a hosted runner. A snapshot change
+  that moves the qemu version fails this stage until the pin and the patch are reviewed.
 - Run all Python tests (including synthetic WebSocket integration tests), JavaScript
   tests, shell syntax checks and cross-compile all four MIPS shims. **Any Python skip fails CI.**
 - Test container uses a read-only source mount and `--network none`.

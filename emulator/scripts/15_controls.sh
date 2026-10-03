@@ -8,9 +8,16 @@ printf '11' > "$ROOTFS/emu/volume-buttons"
 # Raw pin levels for static guest programs: /dev/mem page of GPIO port B (see keys.md).
 python3 -B -m emulator.runtime.gpio reset >/dev/null
 printf '\377' > "$ROOTFS/emu/fb-live"
+: > "$ROOTFS/emu/fb-flush"     # PID of the process that flushed a frame (fbshim copy / static pan): none yet
 printf '0' > "$ROOTFS/emu/power-request"
 # Guest-visible /proc/<pid>/exe names the guest program, not qemu (fbshim): stock-init default.
 printf '%s' "${PROC_EXE:-0}" > "$ROOTFS/emu/proc-exe"
+# QEMU_DEVICES=1 (default): the rebuilt qemu answers /dev/fb0 and /dev/input ioctls for static
+# programs, which load no shim (emulator/docker/qemu); 0 leaves them the kernel's ENOTTY.
+case "${QEMU_DEVICES:-1}" in
+  1|0) printf '%s' "${QEMU_DEVICES:-1}" > "$ROOTFS/emu/qemu-devices" ;;
+  *) err "QEMU_DEVICES must be 1 or 0"; exit 1 ;;
+esac
 : > "$ROOTFS/dev/cst816t"
 : > "$ROOTFS/dev/lcd_st77916"
 # The output stream as /proc/asound/card0 shows it on the player (pcm3p), kept by tinyshim

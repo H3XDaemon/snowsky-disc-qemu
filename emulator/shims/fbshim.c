@@ -6,6 +6,7 @@
 #define __NR_read 4003
 #define __NR_readlink 4085
 #define __NR_nanosleep 4166
+#define __NR_getpid 4020
 static long sys3(long n,long a,long b,long c){
   register long v0 asm("$2")=n,a0 asm("$4")=a,a1 asm("$5")=b,a2 asm("$6")=c; register long a3 asm("$7");
   asm volatile("syscall":"+r"(v0),"=r"(a3):"r"(a0),"r"(a1),"r"(a2)
@@ -140,6 +141,17 @@ void *mmap(void*addr,unsigned long len,int prot,int flags,int fd,long offset){
   if(p!=(void*)-1&&device_is(fd,"/dev/fb0")){fb_base=(unsigned long)p;fb_size=len;fb_live=-1;}
   return p;
 }
+/* Who flushed a frame last: this process, by the PID it has in its own namespace.
+   boot_ready.py matches it against the UI that holds the touch device (NSpid); the
+   patched qemu writes the same marker when a static program pans. */
+static void flushed_by_me(void){
+  /* "%10d\n", written in place: a reader polling the marker never sees it empty or torn. */
+  char text[11];int i=9;long v=sys3(__NR_getpid,0,0,0);
+  for(int k=0;k<10;k++)text[k]=' ';text[10]='\n';
+  do{text[i--]='0'+v%10;v/=10;}while(v&&i>=0);
+  long fd=sys3(__NR_open,(long)"/emu/fb-flush",1/*O_WRONLY*/,0);
+  if(fd>=0){sys3(__NR_write,fd,(long)text,11);sys3(__NR_close,fd,0,0);}
+}
 void *memcpy(void*dest,const void*src,unsigned long len){
   void*p=memmove(dest,src,len);
   unsigned long address=(unsigned long)dest;
@@ -149,6 +161,7 @@ void *memcpy(void*dest,const void*src,unsigned long len){
       unsigned char value=index;
       long fd=sys3(__NR_open,(long)"/emu/fb-live",1,0);
       if(fd>=0){sys3(__NR_write,fd,(long)&value,1);sys3(__NR_close,fd,0,0);fb_live=index;}
+      flushed_by_me();
     }
   }
   return p;

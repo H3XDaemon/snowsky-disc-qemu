@@ -1,8 +1,9 @@
 """Stock-init boot, power events and power-on keys on a disposable V2.57 guest.
 
 Needs a guest prepared with USERDATA_MB (ci/integration.sh, CI_SCENARIO=stock-init).
-Adds two generated init hooks and a static pin probe to the disposable rootfs;
-no firmware memory writes and no stock file is edited.
+Adds two generated init hooks and a static pin probe to the disposable rootfs
+(the static device probe comes from setup); no firmware memory writes and no
+stock file is edited.
 """
 import json
 import os
@@ -13,7 +14,7 @@ import subprocess
 import time
 
 from emulator.runtime import gpio, machine
-from emulator.runtime.boot_ready import ready
+from emulator.runtime.boot_ready import holders, own_pid, ready
 from emulator.runtime.keys import Buttons, Device
 from tests.integration.profile import version as firmware_version
 
@@ -165,6 +166,35 @@ def check_boot(device):
     return pair
 
 
+def check_static_devices(device):
+    """A static program loads no shim: the rebuilt qemu answers its device ioctls (#54)."""
+    marker, live, flush = ROOT / 'emu/qemu-devices', ROOT / 'emu/fb-live', ROOT / 'emu/fb-flush'
+    assert marker.read_text() == '1'
+    wait(lambda: ready(device), bool, 'UI not ready before the probe', 10)
+    shown, flushed = live.read_bytes(), flush.read_bytes()
+    lines = guest('/emu/devprobe').splitlines()
+    assert lines[1] == 'fb: 360x360 virtual 360x1080 bpp 32 offsets r16 g8 b0 a24', lines
+    assert lines[2] == 'fix: ingenicfb smem 1555200 line 1440 visual 2', lines
+    assert 'pan: yoffset 360' in lines and 'touch name: cst816t' in lines and 'keys name: x2000_key' in lines, lines
+    assert 'abs 0: 0..359' in lines and 'keys: 0x14a' in lines, lines
+    # The probe's pan reached both markers in the guest's namespace: the shown buffer and
+    # the flusher's PID. The live UI redraws at will and overwrites both with its own
+    # (buffer switch, PID), so only the pair of writers is certain here; the exact PID of
+    # a lone static program is pinned by emulator/tests/test_devices.py.
+    probe, ui = lines[0].removeprefix('pid: '), str(own_pid(holders(device)['mq_ui'][0]))
+    assert live.read_bytes() in (b'\x00', b'\x01'), live.read_bytes()
+    assert flush.read_text().strip() in (probe, ui), (flush.read_text(), probe, ui)
+    live.write_bytes(shown)
+    flush.write_bytes(flushed)
+    wait(lambda: ready(device), bool, 'UI not ready after the probe', 10)
+    marker.write_text('0')                              # QEMU_DEVICES=0: the kernel's answer, live
+    try:
+        failed = run('guest_run 20 /emu/devprobe || echo "rc=$?"')
+        assert failed.splitlines()[1:] == ['vinfo: Inappropriate ioctl for device', 'rc=2'], failed
+    finally:
+        marker.write_text('1')
+
+
 def check_watch_loop(device, pair):
     os.kill(pair['mq_ui'], signal.SIGKILL)
     killed = time.monotonic()
@@ -292,6 +322,7 @@ def main():
     prepare()
     check_pins_without_boot(device)
     pair = check_boot(device)
+    check_static_devices(device)
     check_watch_loop(device, pair)
     check_reboot()
     check_power_cut(device)

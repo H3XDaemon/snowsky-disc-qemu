@@ -72,7 +72,11 @@ Reference: [stock init, power events and `/usr/data`](../../emulator/docs/stock-
 - Readiness (the card remount, the release of power-on keys, `20_boot.sh`'s
   wait) recognises the UI by its name `mq_ui` and the touch device it holds,
   so a `ui` package started through `/sbin/mq_ui` counts; a launcher that only
-  carries the name does not.
+  carries the name does not. The frame evidence is per process (`emu/fb-flush`,
+  the flusher's own-namespace PID): a dynamic UI's first copy into the
+  framebuffer, a static UI's first `FBIOPAN_DISPLAY` — whenever it happens,
+  also before the supervisor sees the process. A static UI must pan at least
+  once (diskOS does, at start); drawing into the mapping alone is invisible.
 - The card is not mounted while `rcS` runs. With `SDCARD_PARTITION=1` stock
   mounts it a moment after `mq_player` starts; with the default image the
   emulator mounts it a few seconds after the UI is up. A boot stage that needs
@@ -81,6 +85,7 @@ Reference: [stock init, power events and `/usr/data`](../../emulator/docs/stock-
   program **for BusyBox and other dynamically linked readers**, so
   `start-stop-daemon -S/-K -x` and pidfile checks work. A **static** program
   still reads `qemu-mipsel-static` there, and `cmdline` always starts with it
+  (the rebuilt interpreter's file, `/usr/local/lib/qemu-mipsel-<build>/qemu-mipsel-static`)
   (then the file's path, then the caller's `argv[0]`, which the program also
   receives as its own `argv[0]`):
   compare `comm` instead (identical on the player).
@@ -147,6 +152,7 @@ Each of these is opt-in and documented on its own page:
 | `/emu/asound/card0/pcm3p/sub0/{status,hw_params}`, `emu/audio-state` | Output stream as on the player; silence vs samples |
 | `FPU_GUARD=reject\|warn\|off` | `guest_run` refuses programs that would hit the player's FPU trap |
 | `EMU_CPUS=0.25` | Slow the whole container |
+| `QEMU_DEVICES=1` (default) | A **static** program (a `ui` package, diskOS's UI as built for the player) sees `/dev/fb0` and `/dev/input/event*` as stock does: the image's rebuilt qemu answers their ioctls ([stock-init](../../emulator/docs/stock-init.md#static-programs-and-the-devices)); `0` restores `ENOTTY` |
 
 Findings worth knowing:
 
@@ -156,8 +162,9 @@ Findings worth knowing:
   removes from `/usr/data`).
 - Stock keeps the output stream RUNNING while paused and feeds it zeros: judge
   "playing" by samples or by the open file's read position, not by the stream state.
-- qemu 7.2 returns the host errno from `getsockopt(SO_ERROR)` (111, MIPS expects 146);
-  use the system call's own `errno`. Fixed in newer qemu; not replaced here.
+- `getsockopt(SO_ERROR)` returns guest errnos (146) under the image's rebuilt qemu;
+  Debian's unpatched 7.2 returned the host's 111, so a program that must run under
+  both may still use the system call's own `errno`.
 - The guest clock cannot be shifted; a guest's `avahi-daemon` aborts under qemu 7.2;
   a Docker Desktop container is not on the host LAN.
 - [diskOS 1.2.0 on V2.57](../../research/docs/reports/diskos-v257.md): what its image
@@ -177,6 +184,7 @@ Findings worth knowing:
 | `/api/device` `output: null` | Pass `--asound-dir /emu/asound/card0` in the emulator. The service's profile check accepts only `/proc/asound/cardN`; that path cannot be provided for a static program, so the check needs an emulator exception. |
 | `start-stop-daemon -x` checks skipped as "emulated" (`tests/integration/deployment_boot.py`, in the frozen snowsky-disc-web only) | They work in a stock-init guest (`/proc/<pid>/exe` is the program for BusyBox). A static program's own checks should compare `comm`. |
 | Hard-float build found only on the device | `guest_run` now refuses it (exit 126) before it starts |
+| A `ui` package built with a preview helper instead of the player's framebuffer path (static programs got `ENOTTY`, snowsky-disc-qemu #54) | Build it as for the player: the rebuilt qemu answers `FBIOGET_*SCREENINFO`, `FBIOPAN_DISPLAY`, `EVIOCG*` for static programs (`QEMU_DEVICES=1`, default) |
 
 Not replaceable here: wrong-clock tests (the service needs its own offset option),
 LAN reachability and mDNS for Local Network Access (a host-side stand-in, see the
@@ -192,7 +200,11 @@ network page), USB gadget and storage mode, real memory limits.
   USB gadget, Wi-Fi and Bluetooth are absent. Stubbed commands print `[emu-init]`.
 - BusyBox init itself does not run; a native PID 1 follows its order and signals.
 - One `qemu-mipsel` binfmt registration is shared by all containers of the
-  Docker VM; its flags must not be changed.
+  Docker VM; its flags must not be changed. The kernel holds the interpreter
+  file that registered last: an older stack's container may leave Debian's
+  unpatched qemu there until this stack's setup runs, and a rebuilt image is
+  registered by its build-named path, so setup sees the change; the rebuilt qemu
+  runs the other stacks' guests unchanged (no marker, no answers).
 
 ## Interface changes
 
@@ -221,6 +233,10 @@ Additions only; nothing was renamed or removed.
   `set_sd(inserted, force=False)`. The SD netlink port is the player's PID in its
   own namespace. Error text for a non-block card node changed slightly.
 - `emulator.runtime.audio`: new `output_state()`.
+- `emulator.runtime.boot_ready`: `ready()` keeps its signature; it now requires a
+  frame flushed by the UI holder itself (`emu/fb-flush` PID = holder's `NSpid`)
+  and no longer reads `emu/fb-live`, which stays the viewer's buffer hint and is
+  not reset by the supervisor any more. New `flusher()`, `own_pid()`.
 - New modules: `emulator.runtime.gpio`, `machine`, `guest_init`, `battery`,
   `settings`, `power_watch`, `card`, `network`, `abi`.
 - `ci/cleanup.sh` also detaches a `/usr/data` image.

@@ -1,0 +1,349 @@
+Snowsky Disc emulation: device ioctls for static guest programs, SO_ERROR errno
+================================================================================
+
+Against Debian's qemu 7.2+dfsg-7+deb12u18 (the pinned qemu-user-static), after
+its own patch series; built by emulator/docker/Dockerfile into
+/usr/local/bin/qemu-mipsel-static. Two changes to linux-user/syscall.c:
+
+* do_ioctl: while the guest's /emu/qemu-devices marker holds "1", ioctls on the
+  REGULAR FILES /dev/fb0 and /dev/input/event* are answered with the emulated
+  framebuffer (360x360x32, three sub-buffers; FBIOPAN_DISPLAY publishes
+  /emu/fb-live and the panning PID in /emu/fb-flush) and input devices (name from the guest's sysfs stub; EVIOCGBIT,
+  EVIOCGABS 0..359 for the panel, EVIOCGID, EVIOCGRAB ...). Dynamically linked
+  programs get the same answers from the preloaded emulator/shims/fbshim.c; a
+  statically linked program (a boot-layer package) only reaches the kernel, which
+  says ENOTTY for a regular file. Character devices and other files are untouched.
+  Paths go through qemu's path(), so -L <sysroot> applies (emulator/tests/test_devices.py).
+
+* do_getsockopt: SO_ERROR is translated to the guest's errno numbering like the
+  syscall errnos are (MIPS ECONNREFUSED is 146, not the host's 111).
+
+See emulator/docs/stock-init.md (static programs) and emulator/docs/limits.md.
+
+--- a/linux-user/syscall.c	2026-10-03 10:24:05.558703084 +0000
++++ b/linux-user/syscall.c	2026-10-03 10:39:45.348294432 +0000
+@@ -2762,6 +2762,9 @@
+         if (optname == SO_TYPE) {
+             val = host_to_target_sock_type(val);
+         }
++        if (optname == SO_ERROR) {
++            val = host_to_target_errno(val);   /* the guest expects its own errno numbering */
++        }
+         if (len > lv)
+             len = lv;
+         if (len == 4) {
+@@ -5707,6 +5710,304 @@
+ 
+ /* ??? Implement proper locking for ioctls.  */
+ /* do_ioctl() Must return target values and target errnos. */
++
++/* ---- Snowsky Disc emulation (snowsky-disc-qemu, emulator/docker/qemu) ----------------
++ * The guest's /dev/fb0 and /dev/input/event* are regular files: no kernel driver stands
++ * behind them. A dynamically linked program gets their ioctls answered by the preloaded
++ * emulator/shims/fbshim.c; a statically linked one never loads that shim and would get
++ * ENOTTY from the file. Answer the same ioctls here, for regular files at those paths
++ * only, while the guest's /emu/qemu-devices marker holds "1" (QEMU_DEVICES in setup).
++ * Geometry and the fb-live marker match fbshim.c; the input device identity comes from
++ * the guest's sysfs stub (/sys/class/input/eventN/device/name). Paths go through path()
++ * so that -L <sysroot> applies, as it does for the guest's own open().
++ */
++#define DISC_MARKER  "/emu/qemu-devices"
++#define DISC_FB_LIVE "/emu/fb-live"
++#define DISC_FB_FLUSH "/emu/fb-flush"       /* who last flushed a frame: this process, by its own PID */
++#define DISC_PID_RECORD "%10d\n"           /* fixed width, written in place: a reader never sees it empty */
++#define DISC_FB_W    360
++#define DISC_FB_H    360
++#define DISC_FB_VY   1080
++#define DISC_FB_BPP  32
++#define DISC_TOUCH_MAX 359                  /* ABS_X/Y and ABS_MT_POSITION_X/Y of the panel */
++
++enum { DISC_NODE_NONE, DISC_NODE_FB, DISC_NODE_INPUT };
++enum { DISC_INPUT_KEYS, DISC_INPUT_TOUCH };
++
++static int disc_devices_enabled(void)
++{
++    char flag = 0;
++    int fd = open(path(DISC_MARKER), O_RDONLY);
++
++    if (fd < 0) {
++        return 0;
++    }
++    if (read(fd, &flag, 1) != 1) {
++        flag = 0;
++    }
++    close(fd);
++    return flag == '1';
++}
++
++static int disc_read_text(const char *name, char *out, size_t size)
++{
++    int fd = open(name, O_RDONLY), n = 0;
++
++    if (fd >= 0) {
++        n = read(fd, out, size - 1);
++        close(fd);
++    }
++    if (n < 0) {
++        n = 0;
++    }
++    while (n > 0 && (out[n - 1] == '\n' || out[n - 1] == '\r')) {
++        n--;
++    }
++    out[n] = 0;
++    return n;
++}
++
++/* Which emulated node a regular file behind fd is; `node` receives its basename. */
++static int disc_node(int fd, char *node, size_t size)
++{
++    char link[48], target[PATH_MAX], wanted[64];
++    struct stat st;
++    const char *base;
++    ssize_t n;
++
++    if (fstat(fd, &st) < 0 || !S_ISREG(st.st_mode)) {
++        return DISC_NODE_NONE;
++    }
++    snprintf(link, sizeof link, "/proc/self/fd/%d", fd);
++    n = readlink(link, target, sizeof target - 1);
++    if (n <= 0) {
++        return DISC_NODE_NONE;
++    }
++    target[n] = 0;
++    base = strrchr(target, '/');
++    base = base ? base + 1 : target;
++    if (strlen(base) >= size) {
++        return DISC_NODE_NONE;
++    }
++    strcpy(node, base);
++    if (strcmp(target, path("/dev/fb0")) == 0) {
++        return disc_devices_enabled() ? DISC_NODE_FB : DISC_NODE_NONE;
++    }
++    if (strncmp(base, "event", 5) == 0 && base[5] >= '0' && base[5] <= '9') {
++        snprintf(wanted, sizeof wanted, "/dev/input/%s", base);
++        if (strcmp(target, path(wanted)) == 0) {
++            return disc_devices_enabled() ? DISC_NODE_INPUT : DISC_NODE_NONE;
++        }
++    }
++    return DISC_NODE_NONE;
++}
++
++static void disc_write_marker(const char *name, const void *data, size_t len)
++{
++    int fd = open(path(name), O_WRONLY);    /* 15_controls.sh creates it; absent = no viewer */
++
++    if (fd >= 0) {
++        if (write(fd, data, len) < 0) {
++            /* the marker is a hint for the viewer: nothing to recover */
++        }
++        close(fd);
++    }
++}
++
++static uint32_t disc_fb_yoffset;            /* the last pan of this process, as the driver would report */
++
++/* Returns 1 when handled, with the syscall's result in *ret. */
++static int disc_fb_ioctl(abi_long cmd, abi_long arg, abi_long *ret)
++{
++    uint32_t *var;
++    uint8_t *fix;
++
++    if (((cmd >> 8) & 0xff) != 0x46) {
++        return 0;
++    }
++    switch (cmd & 0xffff) {
++    case 0x4600:                            /* FBIOGET_VSCREENINFO: struct fb_var_screeninfo, 40 x u32 */
++        var = lock_user(VERIFY_WRITE, arg, 160, 0);
++        if (!var) {
++            *ret = -TARGET_EFAULT;
++            return 1;
++        }
++        memset(var, 0, 160);
++        var[0] = tswap32(DISC_FB_W);  var[1] = tswap32(DISC_FB_H);      /* xres, yres */
++        var[2] = tswap32(DISC_FB_W);  var[3] = tswap32(DISC_FB_VY);     /* xres_virtual, yres_virtual */
++        var[5] = tswap32(disc_fb_yoffset);
++        var[6] = tswap32(DISC_FB_BPP);
++        var[8] = tswap32(16); var[9] = tswap32(8);    /* red    */
++        var[11] = tswap32(8); var[12] = tswap32(8);   /* green  */
++        var[14] = tswap32(0); var[15] = tswap32(8);   /* blue   */
++        var[17] = tswap32(24); var[18] = tswap32(8);  /* transp */
++        unlock_user(var, arg, 160);
++        *ret = 0;
++        return 1;
++    case 0x4602:                            /* FBIOGET_FSCREENINFO: struct fb_fix_screeninfo, 68 bytes (ILP32) */
++        fix = lock_user(VERIFY_WRITE, arg, 68, 0);
++        if (!fix) {
++            *ret = -TARGET_EFAULT;
++            return 1;
++        }
++        memset(fix, 0, 68);
++        memcpy(fix, "ingenicfb", 10);
++        stl_p(fix + 20, DISC_FB_W * DISC_FB_VY * (DISC_FB_BPP / 8));   /* smem_len */
++        stl_p(fix + 32, 2);                                            /* FB_VISUAL_TRUECOLOR */
++        stl_p(fix + 44, DISC_FB_W * (DISC_FB_BPP / 8));                /* line_length */
++        unlock_user(fix, arg, 68);
++        *ret = 0;
++        return 1;
++    case 0x4606: {                          /* FBIOPAN_DISPLAY: which sub-buffer is shown, for the viewer */
++        uint32_t yoffset;
++
++        if (get_user_u32(yoffset, arg + 20)) {
++            *ret = -TARGET_EFAULT;
++            return 1;
++        }
++        if (yoffset % DISC_FB_H || yoffset >= DISC_FB_VY) {
++            *ret = -TARGET_EINVAL;
++            return 1;
++        }
++        disc_fb_yoffset = yoffset;
++        if (yoffset / DISC_FB_H < 2) {      /* stock and the viewer use the first two of three */
++            char index = yoffset / DISC_FB_H, who[16];
++            disc_write_marker(DISC_FB_LIVE, &index, 1);
++            /* The frame evidence boot_ready.py matches against the UI that holds the touch
++               device (NSpid): a pan is a static program's flush, as memcpy is fbshim's. */
++            disc_write_marker(DISC_FB_FLUSH, who, snprintf(who, sizeof who, DISC_PID_RECORD, (int)getpid()));
++        }
++        *ret = 0;
++        return 1;
++    }
++    default:                                /* FBIOBLANK, FBIOPUT_VSCREENINFO and the rest: accepted */
++        *ret = 0;
++        return 1;
++    }
++}
++
++static void disc_set_bit(uint8_t *bits, unsigned size, unsigned bit)
++{
++    if (bit / 8 < size) {
++        bits[bit / 8] |= 1 << (bit % 8);
++    }
++}
++
++static int disc_input_kind(const char *node)
++{
++    char name_path[96], name[64];
++
++    snprintf(name_path, sizeof name_path, "/sys/class/input/%s/device/name", node);
++    disc_read_text(path(name_path), name, sizeof name);
++    return strcmp(name, "cst816t") == 0 ? DISC_INPUT_TOUCH : DISC_INPUT_KEYS;
++}
++
++static int disc_input_ioctl(const char *node, abi_long cmd, abi_long arg, abi_long *ret)
++{
++    unsigned type = (cmd >> 8) & 0xff, nr = cmd & 0xff, size = (cmd >> 16) & 0x1fff;
++    unsigned dir = ((uint32_t)cmd >> 29) & 7;
++    static const uint16_t key_codes[] = {   /* what the emulator's physical controls send (keys.md) */
++        0xfa, 0xfb, 0xfc, 0x103, 0x106, 0x107, 0x108, 0x109, 0x10a, 0x10b, 0x10c, 0x10d };
++    static const uint8_t touch_axes[] = { 0x00, 0x01, 0x35, 0x36, 0x39 };
++    uint8_t *data;
++    int kind, i;
++
++    if (type != 0x45) {
++        return 0;
++    }
++    if (dir != 2 || size == 0) {            /* EVIOCGRAB, EVIOCSxxx and friends: accepted */
++        *ret = 0;
++        return 1;
++    }
++    kind = disc_input_kind(node);
++    if (nr == 0x07 || nr == 0x08) {         /* EVIOCGPHYS, EVIOCGUNIQ: the drivers set neither */
++        *ret = -TARGET_ENOENT;
++        return 1;
++    }
++    if (nr == 0x04 || (nr >= 0x40 && kind != DISC_INPUT_TOUCH)) { /* EVIOCGKEYCODE; EVIOCGABS of a key device */
++        *ret = -TARGET_EINVAL;
++        return 1;
++    }
++    data = lock_user(VERIFY_WRITE, arg, size, 0);
++    if (!data) {
++        *ret = -TARGET_EFAULT;
++        return 1;
++    }
++    memset(data, 0, size);
++    *ret = 0;
++    if (nr == 0x06) {                       /* EVIOCGNAME(len) */
++        char name_path[96], name[64];
++        int n;
++
++        snprintf(name_path, sizeof name_path, "/sys/class/input/%s/device/name", node);
++        n = disc_read_text(path(name_path), name, sizeof name);
++        if ((unsigned)n + 1 > size) {
++            n = size - 1;
++        }
++        memcpy(data, name, n);
++        data[n] = 0;
++        *ret = n + 1;
++    } else if (nr == 0x01 && size >= 4) {   /* EVIOCGVERSION */
++        stl_p(data, 0x010001);
++    } else if (nr == 0x02 && size >= 8) {   /* EVIOCGID: bustype of the player's drivers */
++        stw_p(data, kind == DISC_INPUT_TOUCH ? 0x18 /* BUS_I2C */ : 0x19 /* BUS_HOST */);
++    } else if (nr >= 0x18 && nr <= 0x1b) {  /* EVIOCGKEY/LED/SND/SW: nothing held or lit */
++        *ret = size;
++    } else if (nr >= 0x20 && nr <= 0x3f) {  /* EVIOCGBIT(ev, len) */
++        unsigned ev = nr - 0x20;
++
++        if (ev == 0) {                      /* EV_SYN, EV_KEY and, for the panel, EV_ABS */
++            disc_set_bit(data, size, 0);
++            disc_set_bit(data, size, 1);
++            if (kind == DISC_INPUT_TOUCH) {
++                disc_set_bit(data, size, 3);
++            }
++        } else if (ev == 1) {
++            if (kind == DISC_INPUT_TOUCH) {
++                disc_set_bit(data, size, 0x14a);                        /* BTN_TOUCH */
++            } else {
++                for (i = 0; i < (int)ARRAY_SIZE(key_codes); i++) {
++                    disc_set_bit(data, size, key_codes[i]);
++                }
++            }
++        } else if (ev == 3 && kind == DISC_INPUT_TOUCH) {
++            for (i = 0; i < (int)ARRAY_SIZE(touch_axes); i++) {
++                disc_set_bit(data, size, touch_axes[i]);
++            }
++        }
++        *ret = size;
++    } else if (nr >= 0x40 && size >= 24) {  /* EVIOCGABS(axis): struct input_absinfo of the panel */
++        unsigned axis = nr - 0x40;
++
++        if (axis == 0x00 || axis == 0x01 || axis == 0x35 || axis == 0x36) {
++            stl_p(data + 8, DISC_TOUCH_MAX);                            /* maximum */
++        } else if (axis == 0x39) {
++            stl_p(data + 8, 0xffff);                                    /* ABS_MT_TRACKING_ID */
++        } else {
++            unlock_user(data, arg, 0);
++            *ret = -TARGET_EINVAL;
++            return 1;
++        }
++    }
++    unlock_user(data, arg, size);
++    return 1;
++}
++
++static int disc_device_ioctl(int fd, abi_long cmd, abi_long arg, abi_long *ret)
++{
++    char node[32];
++
++    switch (disc_node(fd, node, sizeof node)) {
++    case DISC_NODE_FB:
++        return disc_fb_ioctl(cmd, arg, ret);
++    case DISC_NODE_INPUT:
++        return disc_input_ioctl(node, cmd, arg, ret);
++    default:
++        return 0;
++    }
++}
++/* ---- end Snowsky Disc emulation ------------------------------------------------------ */
++
+ static abi_long do_ioctl(int fd, int cmd, abi_long arg)
+ {
+     const IOCTLEntry *ie;
+@@ -5716,6 +6012,9 @@
+     int target_size;
+     void *argptr;
+ 
++    if (disc_device_ioctl(fd, cmd, arg, &ret)) {
++        return ret;
++    }
+     ie = ioctl_entries;
+     for(;;) {
+         if (ie->target_cmd == 0) {

@@ -158,15 +158,17 @@ class GuardTests(unittest.TestCase):
                 allowed = self.guest_run(*command)
                 self.assertEqual((allowed.returncode, allowed.stderr), (0, ''))
 
-    def test_pinned_qemu_returns_the_host_errno_from_so_error(self):
-        """Documents a qemu-user 7.2 gap (emulator/docs/limits.md). When this fails after an
-        image update, qemu translates SO_ERROR: update the page and expect 146 here."""
+    def test_rebuilt_qemu_returns_the_guest_errno_from_so_error(self):
+        """Debian's qemu 7.2 returned the host's 111 here; the image's rebuilt interpreter
+        (emulator/docker/qemu) translates SO_ERROR like the syscall errnos (emulator/docs/limits.md)."""
         probe = self.base / 'soerror'
         subprocess.run(['mipsel-linux-gnu-gcc', '-static', '-O1', '-o', str(probe), str(GUEST / 'soerror.c')],
                        check=True)
         output = subprocess.run(['qemu-mipsel-static', str(probe)], capture_output=True, text=True).stdout
-        self.assertIn('blocking connect=-1 errno=146', output)       # the syscall's own errno is translated
-        self.assertIn('SO_ERROR=111 ECONNREFUSED=146', output)       # the socket option's value is not
+        self.assertIn('blocking connect=-1 errno=146', output)       # the syscall's own errno
+        self.assertIn('SO_ERROR=146 ECONNREFUSED=146 ok', output)    # and the socket option's value
+        stock = subprocess.run(['/usr/bin/qemu-mipsel-static', str(probe)], capture_output=True, text=True).stdout
+        self.assertIn('SO_ERROR=111 ECONNREFUSED=146', stock)        # the gap this fixes, kept visible
 
 
 if __name__ == '__main__':
