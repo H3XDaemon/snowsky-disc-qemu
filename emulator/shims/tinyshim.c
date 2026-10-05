@@ -16,6 +16,8 @@
 #define __NR_write 4004
 #define __NR_close 4006
 #define __NR_nanosleep 4166
+#define __NR_clock_gettime 4263
+#define CLOCK_MONOTONIC 1
 #define __NR_getpid 4020
 #define __NR_rename 4038
 #define O_WCT 0x301   /* MIPS O_WRONLY|O_CREAT|O_TRUNC  */
@@ -35,6 +37,9 @@ static char g_pcm[16], g_params[16];
 static int g_fd = -1, g_ch = 2, g_sb = 4;
 static unsigned g_rate = 48000;
 static unsigned g_buffer_frames = 8192;
+/* The emulated DAC clock (see pace()): when everything written so far has played. */
+static long g_due_sec = -1;                /* -1: nothing queued since pcm_open */
+static unsigned g_due_frames;              /* frames past g_due_sec, below g_rate */
 
 static void trace(const char *s){
   unsigned n = 0; while (s[n]) ++n;
@@ -142,6 +147,7 @@ struct pcm *pcm_open(unsigned card, unsigned device, unsigned flags, const void 
     if (fmt_write() < 0){ sys3(__NR_close,g_fd,0,0); g_fd=-1; return (struct pcm *)0; }
   }
   g_stream = -1;                            /* a new configuration is always published */
+  g_due_sec = -1;                           /* and its clock starts at the first write */
   stream_state(1);
   audible(1);
   return (struct pcm *)g_pcm;
@@ -159,6 +165,50 @@ unsigned pcm_get_buffer_size(const struct pcm *p){ (void)p; return g_buffer_fram
 unsigned pcm_frames_to_bytes(const struct pcm *p, unsigned frames){ (void)p; return frames*g_ch*g_sb; }
 unsigned pcm_bytes_to_frames(const struct pcm *p, unsigned bytes){ (void)p; return bytes/(g_ch*g_sb); }
 const char *pcm_get_error(const struct pcm *p){ (void)p; return ""; }
+
+/* f frames (below the rate) as nanoseconds, to the microsecond; 32-bit unsigned arithmetic
+ * stays in range up to a 768 kHz rate. */
+static long frames_ns(unsigned f){
+  return (long)(f * 1000u / g_rate * 1000000u + (f * 1000u % g_rate) * 1000u / g_rate * 1000u);
+}
+
+static void sleep_for(long *wait){
+  long left[2];
+  while (sys3(__NR_nanosleep, (long)wait, (long)left, 0) == -4){ wait[0] = left[0]; wait[1] = left[1]; }
+}
+
+/* The emulated DAC's clock. A real DAC consumes frames at the sample rate and pcm_write
+ * returns once the written frames are in its ring buffer, so the time the writer spends
+ * decoding overlaps playback. Sleeping for the length of every write after the writer's
+ * own work instead made the output slower than real time by that work (928 ms of audio
+ * took 1009-1011 ms in test_output_stream), and the browser's buffer emptied. The sleep also
+ * keeps firmware-generated silence from filling the disk, so without a clock
+ * (clock_gettime failing) the shim falls back to it.
+ * The deadline is kept as whole monotonic seconds plus a frame count below the rate: the
+ * sum never drifts, and nothing needs 64-bit division, which the -nostdlib build has no
+ * library for (test_output_stream checks the built shim needs no symbols). */
+static void pace(unsigned frames){
+  long now[2], wait[2], wake_sec, wake_frames;
+  if (sys3(__NR_clock_gettime, CLOCK_MONOTONIC, (long)now, 0) < 0){
+    wait[0] = frames / g_rate; wait[1] = frames_ns(frames % g_rate); sleep_for(wait); return;
+  }
+  /* First write, or the writer fell behind (an underrun): the DAC restarts now. */
+  if (g_due_sec < now[0] || (g_due_sec == now[0] && frames_ns(g_due_frames) < now[1])){
+    g_due_sec = now[0];
+    g_due_frames = (unsigned)(now[1] / 1000000) * g_rate / 1000u;
+  }
+  g_due_frames += frames;
+  while (g_due_frames >= g_rate){ g_due_frames -= g_rate; ++g_due_sec; }
+  /* Return once at most a full buffer (period size x period count) is left to play,
+   * i.e. at the deadline minus the buffer; a write larger than the buffer waits too. */
+  wake_sec = g_due_sec;
+  wake_frames = (long)g_due_frames - (long)g_buffer_frames;
+  while (wake_frames < 0){ wake_frames += g_rate; --wake_sec; }
+  wait[0] = wake_sec - now[0];
+  wait[1] = frames_ns((unsigned)wake_frames) - now[1];
+  if (wait[1] < 0){ wait[1] += 1000000000; --wait[0]; }
+  if (wait[0] >= 0) sleep_for(wait);
+}
 
 int pcm_write(struct pcm *p, const void *data, unsigned count){
   (void)p;
@@ -178,14 +228,7 @@ int pcm_write(struct pcm *p, const void *data, unsigned count){
     stream_state(2);
     audible(i < count ? 2 : 1);
   }
-  /* A real DAC blocks until buffer space is available. Bound the emulated sink
-   * too, including firmware-generated silence, so idle writes cannot flood disk. */
-  unsigned frames = count / (g_ch*g_sb);
-  long delay[2] = {frames/g_rate, (long)((frames%g_rate)*1000/g_rate)*1000000};
-  long remaining[2];
-  while (sys3(__NR_nanosleep,(long)delay,(long)remaining,0) == -4){
-    delay[0]=remaining[0]; delay[1]=remaining[1];
-  }
+  pace(count / (g_ch*g_sb));
   return 0;
 }
 int pcm_read(struct pcm *p, void *data, unsigned count){ (void)p;(void)data;(void)count; return -1; }

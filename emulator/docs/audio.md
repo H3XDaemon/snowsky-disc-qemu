@@ -11,7 +11,7 @@ No audio patches to `mq_player` are needed; the key-enable patch is unrelated.
 ```
 
 The lower-left headphone jack (**Enable sound**) joins the current captured PCM
-through Web Audio with a 150 ms look-back; it does not replay the recording from
+through Web Audio with a 300 ms look-back; it does not replay the recording from
 its beginning. Click the jack again to mute. **Debug → Replay capture** starts
 the current recording again. These viewer controls do
 not change firmware play/pause state. Browser playback buffers a little and can pause if
@@ -166,6 +166,23 @@ and available bytes; `/audio.pcm?generation=…&offset=…` returns bounded, fra
 and rejects stale generations. `viewer/static/audio.js` converts PCM to float samples and schedules
 them in Web Audio. Timing depends on decoder cost and host load; the earlier blanket claim
 that qemu cannot play FLAC in real time was not established.
+
+`tinyshim` paces `pcm_write` like a DAC: it keeps the time at which everything written so
+far will have played and returns once at most the configured buffer (period size × period
+count) is left to play. V2.57 playing a 48 kHz file opens 1920-frame periods and a
+3840-frame buffer, i.e. two periods (80 ms). An earlier version slept for the length of
+each write after the writer's own work, so output ran slower than real time by the
+per-period work. In `emulator/tests/test_output_stream.py` (40 writes of 1024 frames at
+44.1 kHz, 928 ms of audio, 2 ms of work before each) the last write returned after
+1009-1011 ms with that version and after 837-839 ms with this one, 92 ms (the 4096-frame
+buffer) before the audio finished, in Docker under qemu-user. On a slower host (an Android
+phone running this firmware under qemu-user, outside this repository) the earlier version
+played 29.2 s of audio per 30 s (0.973×); the browser loses 0.027 s of lag per second at
+that rate, so a 0.15 s lag would be used up after about 6 s. A draft of the current pacing
+that returned one period later measured 29.96 s per 30.05 s on that phone, and with the
+0.3 s look-back above one 70 s browser run there recorded no gaps; the phone was not
+measured again with the current pacing. When the host cannot decode in real time, every
+write starts the clock again and `pcm_write` returns without sleeping.
 
 Future firmware analysis: [RE.md](../../research/docs/methods.md), [Ghidra tooling](../../research/ghidra/README.md).
 

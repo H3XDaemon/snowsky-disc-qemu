@@ -156,6 +156,9 @@ Active firmware: **V2.57**. Local protocol research is finalized in
   framed. Cross-site and DNS-rebound requests now get 403, and responses forbid framing;
   `localhost`, IP addresses, `*.local` names and names listed in `VIEWER_HOSTS` still work.
   [Viewer guide](viewer/docs/usage.md).
+- Live sound in the viewer no longer slowly falls behind the player when the host can
+  decode in real time: the emulated audio output now plays at the sample rate. Live sound
+  now plays 0.3 s behind the player instead of 0.15 s. [Audio](emulator/docs/audio.md).
 - Setup and cleanup of a fresh work volume no longer detach the card image of
   another running emulator container (loop devices are shared by the Docker VM).
 - WebSocket bridge releases its connection slot even when an invalid peer disconnects

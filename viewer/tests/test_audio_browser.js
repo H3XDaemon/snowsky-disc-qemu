@@ -2,6 +2,7 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
+const LIVE_LAG = .3;   // seconds behind the capture that audio.js joins live audio
 
 test('browser routes PCM through DAC gains, updates them and stops when guest powers off', async () => {
   const elements = {}, timers = [], gains = [], sources = [];
@@ -77,7 +78,7 @@ test('Enable joins current output after a long capture; Replay alone starts at z
   const f=audioFixture();
   await f.nodes['audio-toggle'].onclick();await f.tick();
   const [first]=f.offsets();
-  assert.equal(first,Math.floor((500-.15)*f.bytesPerSecond));
+  assert.equal(first,Math.floor((500-LIVE_LAG)*f.bytesPerSecond));
   assert.equal(first%8,0);
   assert.match(f.nodes['audio-status'].textContent,/live/);
   assert.doesNotMatch(f.nodes['audio-status'].textContent,/silence/);
@@ -87,7 +88,7 @@ test('Enable joins current output after a long capture; Replay alone starts at z
   await f.nodes['audio-toggle'].onclick();
   f.update({bytes:600*f.bytesPerSecond,seconds:600});
   await f.nodes['audio-toggle'].onclick();await f.tick();
-  assert.equal(f.offsets().at(-1),Math.floor((600-.15)*f.bytesPerSecond));
+  assert.equal(f.offsets().at(-1),Math.floor((600-LIVE_LAG)*f.bytesPerSecond));
 });
 
 test('Live drops stale scheduled history after stalls while Replay preserves it',async()=>{
@@ -96,7 +97,7 @@ test('Live drops stale scheduled history after stalls while Replay preserves it'
   f.context.currentTime=5;f.update({bytes:505*f.bytesPerSecond,seconds:505});
   await f.tick();
   assert(f.sources[0].stopped);
-  assert.equal(f.offsets().at(-1),Math.floor((505-.15)*f.bytesPerSecond));
+  assert.equal(f.offsets().at(-1),Math.floor((505-LIVE_LAG)*f.bytesPerSecond));
   await f.nodes['audio-replay'].onclick();await f.tick();
   f.context.currentTime+=5;await f.tick();
   assert.equal(f.offsets().at(-1),8);
@@ -107,7 +108,7 @@ test('Capture rollover rejoins live and zero PCM is reported as silence',async()
   await f.nodes['audio-toggle'].onclick();await f.tick();
   f.update({generation:'two',bytes:3*f.bytesPerSecond,seconds:3});f.silence(true);
   await f.tick();
-  assert.equal(f.offsets().at(-1),Math.floor((3-.15)*f.bytesPerSecond));
+  assert.equal(f.offsets().at(-1),Math.floor((3-LIVE_LAG)*f.bytesPerSecond));
   assert.match(f.nodes['audio-status'].textContent,/live · silence/);
   f.context.state='suspended';const count=f.offsets().length;
   await f.tick();assert.equal(f.offsets().length,count);

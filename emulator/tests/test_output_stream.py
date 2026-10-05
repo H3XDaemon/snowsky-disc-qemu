@@ -1,4 +1,5 @@
 """The audio shim's stream reporting, read back by output_state (no firmware)."""
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -22,12 +23,17 @@ class OutputStreamTests(unittest.TestCase):
             path.write_text('closed\n')
         (self.root / 'emu/audio-state').write_bytes(b'c')
 
-    def test_shim_output_is_what_the_reader_expects(self):
-        """The real shim, built for MIPS with a file prefix and run under qemu-user."""
-        probe = self.root / 'streamprobe'
+    def probe(self, name):
+        """streamprobe.c with the real shim, built for MIPS with a file prefix."""
+        probe = self.root / name
         subprocess.run(['mipsel-linux-gnu-gcc', '-static', '-O1', f'-DTINYSHIM_ROOT="{self.root}"',
                         '-DTINYSHIM_NO_FOPEN', '-o', str(probe), str(REPO / 'emulator/tests/guest/streamprobe.c'),
                         str(REPO / 'emulator/shims/tinyshim.c')], check=True)
+        return probe
+
+    def test_shim_output_is_what_the_reader_expects(self):
+        """The real shim, built for MIPS with a file prefix and run under qemu-user."""
+        probe = self.probe('streamprobe')
         steps = {'open': ('PREPARED', 'silence'), 'samples': ('RUNNING', 'samples'),
                  'silence': ('RUNNING', 'silence'), 'close': ('closed', 'closed')}
         for step, (stream, activity) in steps.items():
@@ -45,6 +51,29 @@ class OutputStreamTests(unittest.TestCase):
                     self.assertEqual({path.read_text() for path in self.files.values()}, {'closed\n'})
         self.assertFalse(list((self.root / STREAM).glob('*.n')))          # no temporary left behind
         self.assertEqual((self.root / 'audio.fmt').read_bytes(), bytes([2, 0, 0, 0, 4, 0, 0, 0, 0x44, 0xac, 0, 0]))
+
+    def test_shim_paces_writes_at_the_sample_rate_not_slower(self):
+        """40 periods of 1024 frames at 44.1 kHz are 928 ms of audio (whole ms). With 2 ms
+        of the writer's own work per period, a DAC plays while the writer works: the last
+        write returns once the 4096-frame buffer (92 ms) is all that is left to play, about
+        2 + 928 - 92 = 838 ms in. The window is 10 ms below and 15 ms above that; returning
+        a period (23 ms) later, or sleeping after the work (1009 ms), falls outside it."""
+        run = subprocess.run(['qemu-mipsel-static', str(self.probe('paceprobe')), 'pace'], check=True,
+                             capture_output=True, text=True)
+        elapsed = int(run.stdout.split()[-1])
+        expected = 2 + 40 * 1024 * 1000 // 44100 - 4096 * 1000 // 44100
+        self.assertLessEqual(elapsed, expected + 15, run.stdout)
+        self.assertGreaterEqual(elapsed, expected - 10, run.stdout)
+
+    def test_built_shim_needs_no_library_symbols(self):
+        """build_shims.sh links with -nostdlib and -shared, which leaves undefined symbols to
+        load time. The only one the shim may use is the guest libc's fopen64 (its fopen
+        redirect); a helper such as 64-bit division (__udivdi3) has no library there."""
+        subprocess.run(['bash', str(REPO / 'emulator/shims/build_shims.sh')], check=True,
+                       env={**os.environ, 'WORK': str(self.root)}, capture_output=True)
+        undefined = subprocess.run(['mipsel-linux-gnu-nm', '-u', str(self.root / 'tinyshim.so')], check=True,
+                                   capture_output=True, text=True).stdout
+        self.assertEqual(undefined.split()[1::2], ['fopen64'], undefined)
 
     def test_half_replaced_pair_is_reported_as_closed_not_an_error(self):
         self.files['status'].write_text('state: RUNNING\nowner_pid   : 7\n')          # hw_params still closed
