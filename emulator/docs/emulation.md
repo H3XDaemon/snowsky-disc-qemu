@@ -26,7 +26,9 @@ macOS/Linux host
   (`emulator/docker/qemu/snowsky-disc-devices.patch`; `/usr/local/bin/qemu-mipsel-static`
   links to the build-named `/usr/local/lib/qemu-mipsel-<build>/qemu-mipsel-static` that
   binfmt registers): it answers the framebuffer/input ioctls for **static** programs,
-  which load no shim, and translates `getsockopt(SO_ERROR)`. Debian's binary stays at
+  which load no shim, translates `getsockopt(SO_ERROR)`, and with `PROC_EXE=1` shows
+  other guest processes' `cmdline`/`exe` as the player does
+  ([process identity](stock-init.md#process-identity-under-qemu-user)). Debian's binary stays at
   `/usr/bin` for `QEMU=/usr/bin/qemu-mipsel-static`. See
   [stock-init.md](stock-init.md#static-programs-and-the-devices).
 - `--privileged` is required: qemu-user needs to reserve a large contiguous guest VA,

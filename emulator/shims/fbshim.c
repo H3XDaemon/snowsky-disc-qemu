@@ -83,8 +83,10 @@ long read(int fd,void*data,unsigned long count){
 /* qemu-user leaves /proc/<pid>/exe of every guest process pointing at the
    interpreter, so BusyBox start-stop-daemon -x and killall-by-exe never match.
    With the opt-in marker, report the guest program instead: the path the kernel
-   handed to qemu (after an optional `-0 argv0`). /proc/<pid>/cmdline is left
-   alone: the original argv[0] is not recoverable (see emulator/docs/stock-init.md). */
+   handed to qemu (after an optional `-0 argv0`). The rebuilt qemu (emulator/docker/qemu)
+   answers the same, and /proc/<pid>/cmdline, for static readers too; this stays for
+   Debian's interpreter. Under the rebuilt one readlink already returns the program,
+   so the interpreter suffix below does not match and nothing is re-read. */
 static int proc_exe(const char*path,char*cmdline){
   const char prefix[]="/proc/",suffix[]="/cmdline";int i=0,n;
   for(;i<6;i++)if(path[i]!=prefix[i])return 0;

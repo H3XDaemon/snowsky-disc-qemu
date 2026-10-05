@@ -137,28 +137,46 @@ A program started this way is part of the guest: `reboot`, `off` and `cut` end i
 
 ## Process identity under qemu-user
 
+The kernel builds `/proc/<pid>/cmdline` and `/proc/<pid>/exe` of a binfmt-started
+program for the interpreter. In stock-init mode (`PROC_EXE=1`, the marker
+`emu/proc-exe`) the rebuilt qemu and `fbshim` show the player's view instead; a
+direct boot keeps the interpreter's view unless `PROC_EXE=1` is set.
+
 | What a guest program reads | Player | Emulator |
 | --- | --- | --- |
-| `/proc/<pid>/comm`, `pgrep -x`, `pidof`, `killall` | program name | **same** (`mq_ui`, `mq_player`, `init` for PID 1) |
-| `/proc/<pid>/exe` through BusyBox or any glibc program | program path | **same in stock-init mode**: `fbshim` reports the guest program instead of `qemu-mipsel-static` (`emu/proc-exe`, `PROC_EXE=1` enables it for a direct boot too) |
-| `/proc/<pid>/exe` read by a **static** program | program path | the interpreter's file, `/usr/local/lib/qemu-mipsel-<build>/qemu-mipsel-static`: no shim is loaded into a static program |
-| `/proc/<pid>/cmdline` | `argv` | `qemu-mipsel-static`, the program's **full path**, then `argv[0]` and the arguments |
+| `/proc/<pid>/comm`, the name field of `/proc/<pid>/stat` | program name | **same** (`mq_ui`, `mq_player`, `init` for PID 1) |
+| `pidof NAME`, `killall NAME` | the name, or the basename of `argv[0]` (`libbb/find_pid_by_name.c`): a program started by its path is found | **same** in both modes |
+| `pgrep -x NAME`, `pkill -x NAME` (what stock's watch loop uses) | `argv[0]` first; the name only when the pattern occurs **nowhere** in `argv[0]` (`procps/pgrep.c`, BusyBox 1.31.1). `exec /usr/bin/mq_ui` has `argv[0]` `/usr/bin/mq_ui`: the pattern occurs in it, the whole-string match fails, **not found** | **same with `PROC_EXE=1`**: `cmdline` reads as the player's. With the interpreter's view the pattern never occurs in `argv[0]` (qemu's path), so `pgrep` always falls back to the name and **finds what the player does not** |
+| `/proc/<pid>/cmdline` | `argv` as passed | **same with `PROC_EXE=1`** (qemu: the `argv[0]` the caller passed, binfmt flag `P`, then the arguments). Interpreter's view: qemu's path, the program's full path, then `argv[0]` and the arguments |
+| `/proc/<pid>/exe` | program path | **same with `PROC_EXE=1`**, for dynamic (`fbshim`) and static (qemu) readers alike. Interpreter's view: `/usr/local/lib/qemu-mipsel-<build>/qemu-mipsel-static` |
 | `argv[0]` inside the program | as started (`mq_ui`) | **same**: the binfmt entry's `P` flag hands the caller's `argv[0]` to qemu |
 
 So BusyBox `start-stop-daemon -S/-K -x <program>` with or without a pidfile works
 in a stock-init guest: a second start reports `already running`, and `rcK` stops
 the daemon. `-n <name>` works in both modes.
 
-`cmdline` cannot be corrected: the kernel builds it for the interpreter. A
-static program that must recognise another process should compare
-`/proc/<pid>/comm` (or the name field of `/proc/<pid>/stat`): that is identical
-on the player and here. The `P` flag is part of the one `qemu-mipsel`
-registration shared by every container of the Docker VM; `10_setup_env.sh`
-replaces an entry registered without it, which changes `argv[0]` for other
-stacks' next execs as well (an improvement for them too, and nothing in this
-repository or its known consumers reads the guest's `argv[0]` through the host).
-For a script the reported `exe` is the interpreter as invoked (`/bin/sh`), not the
-resolved `/bin/busybox`.
+The `pgrep -x` row is what bit a boot layer (#57): wrappers ending in
+`exec /usr/bin/mq_ui "$@"` passed every guest check at `690a55c` (the
+interpreter's view hid it), while on the player `fiio_init.sh` found neither
+program every 5 s and restarted the pair without end. Start the stock programs
+with their bare name as `argv[0]` (`exec -a mq_ui /usr/bin/mq_ui`, or from a
+directory on `PATH`), and a program that must recognise another one should
+compare `comm` or use `pidof`. From the container, `emulator.runtime.boot_ready`
+offers `argv0(pid)` and `watched(name, pid)`, BusyBox's rule applied to the
+container's view of `cmdline`, which holds in either mode; the stock-init
+scenario checks both views on a program started by its path and one by name.
+
+qemu derives the player's `cmdline` from the kernel's: the binfmt layout (the
+registration's `P` flag, read from the process's `auxv`), an explicit
+`qemu -0 argv0 PROGRAM`, or an explicit `qemu PROGRAM`; a qemu started with other
+options, or a process that is not a guest (the native PID 1), keeps the kernel's
+text. `/proc/self/...` was the guest's own view already. The `P` flag is part of
+the one `qemu-mipsel` registration shared by every container of the Docker VM;
+`10_setup_env.sh` replaces an entry registered without it, which changes
+`argv[0]` for other stacks' next execs as well (an improvement for them too, and
+nothing in this repository or its known consumers reads the guest's `argv[0]`
+through the host). For a script the reported `exe` is the interpreter as invoked
+(`/bin/sh`), not the resolved `/bin/busybox`.
 
 ## Static programs and the devices
 
@@ -208,10 +226,10 @@ the shim still answers first for them.
   live guest and flips the marker.
 
 The patch also makes `getsockopt(SO_ERROR)` return guest errnos
-([limits](limits.md#socket-error-numbers)). What it does not do: a static program
-still reads `qemu-mipsel-static` from `/proc/<pid>/exe` (table above), and the
-audio interposers (`asndshim`, `tinyshim`) remain preload-only, so a static
-program that opens the DAC itself is not covered.
+([limits](limits.md#socket-error-numbers)) and, with `PROC_EXE=1`, shows other
+guest processes as the player does (table above), for static readers too. What
+it does not do: the audio interposers (`asndshim`, `tinyshim`) remain
+preload-only, so a static program that opens the DAC itself is not covered.
 
 ## Power events
 
@@ -315,6 +333,10 @@ guest with an 83 MiB `/usr/data` image and checks, with two generated init hooks
 and a static MIPS pin probe:
 
 - power-on keys seen by the static program at `S22` and released after boot;
+- the guest's view of other processes: stock's pair reads `mq_ui` / `mq_player`
+  in `cmdline` and its program in `exe`; of two `sleep`s, one started by its path
+  and one by name, `pgrep -x` finds one and `pidof` both, as on the player, and
+  `PROC_EXE=0` (marker `0`) restores the interpreter's view that found both;
 - a static program sees the framebuffer and both input devices (setup's
   `/emu/devprobe`), its pan reaches `emu/fb-live` and `emu/fb-flush` in the
   guest's namespace, and `QEMU_DEVICES=0` (marker `0`) restores the kernel's
