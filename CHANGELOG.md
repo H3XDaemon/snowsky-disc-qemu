@@ -164,6 +164,12 @@ Active firmware: **V2.57**. Local protocol research is finalized in
   setup leaves other architectures' handlers untouched.
 - `getsockopt(SO_ERROR)` returns MIPS errnos under the rebuilt qemu (Debian's 7.2
   returned the host's). [Limits](emulator/docs/limits.md#socket-error-numbers).
+- In a stock-init guest, `/proc/<pid>/cmdline` and `exe` of other guest processes
+  read as on the player (the rebuilt qemu, `PROC_EXE=1`), so BusyBox `pgrep -x`
+  misses a program started by its path here too instead of hiding a defect that
+  restarts stock's pair without end on the player (#57). The docs now state
+  BusyBox's matching rules; `boot_ready.watched()` applies them from the container.
+  [Process identity](emulator/docs/stock-init.md#process-identity-under-qemu-user).
 
 Detailed progress, limitations and follow-ups: [protocol research](research/docs/status.md).
 

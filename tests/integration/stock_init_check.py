@@ -14,7 +14,7 @@ import subprocess
 import time
 
 from emulator.runtime import gpio, machine
-from emulator.runtime.boot_ready import holders, own_pid, ready
+from emulator.runtime.boot_ready import argv0, holders, own_pid, ready, watched
 from emulator.runtime.keys import Buttons, Device
 from tests.integration.profile import version as firmware_version
 
@@ -91,6 +91,13 @@ def stock(device):
 
 def started(pid):
     return int(Path(f'/proc/{pid}/stat').read_text().split(') ', 1)[1].split()[19])
+
+
+def comm(pid):
+    try:
+        return Path(f'/proc/{pid}/comm').read_text().strip()
+    except OSError:
+        return None
 
 
 def parent(pid):
@@ -193,6 +200,45 @@ def check_static_devices(device):
         assert failed.splitlines()[1:] == ['vinfo: Inappropriate ioctl for device', 'rc=2'], failed
     finally:
         marker.write_text('1')
+
+
+def check_process_view(device, pair):
+    """The guest sees other guest processes as the player does (#57): BusyBox pgrep -x
+    matches argv[0] first, so a program started by its path is invisible to stock's
+    watch loop on both; pidof and the comm-based holders() find it on both."""
+    marker = ROOT / 'emu/proc-exe'
+    assert marker.read_text() == '1'                            # the stock-init default
+    ui = own_pid(pair['mq_ui'])
+    assert guest(f'cat /proc/{ui}/cmdline | tr "\\0" " "').strip() == 'mq_ui'     # as fiio_init.sh started it
+    assert guest(f'readlink /proc/{ui}/exe').strip() == '/usr/bin/mq_ui'
+    assert guest('pgrep -x mq_ui | wc -l; pgrep -x mq_player | wc -l').split() == ['1', '1']
+    assert argv0(pair['mq_ui']) == 'mq_ui' and watched('mq_ui', pair['mq_ui'])
+    by_path = subprocess.Popen(['bash', '-c', f'source {SCRIPTS}/lib.sh; guest_run 0 /bin/sh -c "exec /bin/sleep 7001"'])
+    by_name = subprocess.Popen(['bash', '-c', f'source {SCRIPTS}/lib.sh; guest_run 0 /bin/sh -c "exec -a sleep /bin/sleep 7002"'])
+    # Other sleeps live here too (the S99 hook's daemon, stock's `sleep 5`), and `pgrep -f`
+    # would also match the guest_run wrappers (`timeout ... sleep 7001`): pick these two by
+    # their arguments among what pidof finds.
+    def sleepers():
+        listed = guest('for p in $(pidof sleep); do printf "%s " "$p"; tr "\\0" " " < /proc/$p/cmdline; echo; done')
+        return {line.split()[0]: ' '.join(line.split()[1:]) for line in listed.splitlines() if ' 700' in line}
+    try:
+        wait(lambda: len(sleepers()), lambda n: n == 2, 'sleepers did not start', 20)
+        views = sleepers()
+        mine = set(views)
+        assert sorted(views.values()) == ['/bin/sleep 7001', 'sleep 7002'], views
+        found = set(guest('pgrep -x sleep').split()) & mine                # pgrep -x: argv[0] decides
+        assert found == {pid for pid, view in views.items() if view == 'sleep 7002'}, (found, views)
+        sleepers = [pid for pid in device.processes()
+                    if comm(pid) == 'sleep' and b'700' in Path(f'/proc/{pid}/cmdline').read_bytes()]
+        assert sorted(watched('sleep', pid) for pid in sleepers) == [False, True], sleepers
+        marker.write_text('0')                                  # PROC_EXE=0: the interpreter's view, live
+        assert mine <= set(guest('pgrep -x sleep').split())                # both by comm: what hid the defect
+        assert guest(f'cat /proc/{ui}/cmdline | tr "\\0" " "').split()[0].endswith('/qemu-mipsel-static')
+        marker.write_text('1')
+    finally:
+        guest('for p in $(pidof sleep); do grep -q 700 /proc/$p/cmdline && kill $p; done; true')
+        for process in (by_path, by_name):
+            process.wait(10)
 
 
 def check_watch_loop(device, pair):
@@ -323,6 +369,7 @@ def main():
     check_pins_without_boot(device)
     pair = check_boot(device)
     check_static_devices(device)
+    check_process_view(device, pair)
     check_watch_loop(device, pair)
     check_reboot()
     check_power_cut(device)
