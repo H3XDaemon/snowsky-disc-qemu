@@ -164,6 +164,9 @@ Active firmware: **V2.57**. Local protocol research is finalized in
   setup leaves other architectures' handlers untouched.
 - `getsockopt(SO_ERROR)` returns MIPS errnos under the rebuilt qemu (Debian's 7.2
   returned the host's). [Limits](emulator/docs/limits.md#socket-error-numbers).
+- The viewer's screen stayed black in Safari: its page now reads the frame stream
+  as plain bytes (`/stream?raw=1`), which WebKit's `fetch()` delivers, instead of
+  the multipart type it swallows. Reported in #56. [Viewer](viewer/docs/usage.md).
 
 Detailed progress, limitations and follow-ups: [protocol research](research/docs/status.md).
 

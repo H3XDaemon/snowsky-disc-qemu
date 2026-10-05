@@ -132,6 +132,15 @@ Content-Length, preloads a PNG Blob URL with `Image.decode()`, and replaces the
 displayed image as soon as it is complete. Native multipart image decoding could leave a
 rarely updated image blank while waiting for subsequent parts; explicit decoding
 avoids that dependency. There are no delta frames or reference-frame chains.
+
+The page reads `/stream?raw=1`: the same parts labelled `application/octet-stream`.
+WebKit treats a `multipart/x-mixed-replace` response in `fetch()` as its image
+loader would and never hands the body to the page, so Safari showed a black
+screen while `/frame` and a direct `/stream` worked (reported in #56, through an
+nginx proxy; Chrome on the same host was fine). Plain `/stream` keeps the
+multipart type for a browser's `<img>` or address bar. A reverse proxy must not
+buffer either (`X-Accel-Buffering: no` is sent; nginx also needs
+`proxy_buffering off` only when it ignores that header).
 The browser retains at most one frame being decoded and one latest pending frame;
 obsolete connection decodes are discarded and replaced Blob URLs are revoked.
 The currently displayed URL remains valid until a complete replacement is ready.
