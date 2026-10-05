@@ -164,6 +164,11 @@ Active firmware: **V2.57**. Local protocol research is finalized in
   setup leaves other architectures' handlers untouched.
 - `getsockopt(SO_ERROR)` returns MIPS errnos under the rebuilt qemu (Debian's 7.2
   returned the host's). [Limits](emulator/docs/limits.md#socket-error-numbers).
+- Setup's priming boot waits for the `SYSCONFIG` table and its row, not for the
+  database file, starts an unprimed file over, retries once and stops setup when
+  that fails or the database cannot be read: under load the settings step failed
+  on a database without its table (#58).
+  [Environment](emulator/docs/environment.md#stock-settings-profiles).
 - In a stock-init guest, `/proc/<pid>/cmdline` and `exe` of other guest processes
   read as on the player (the rebuilt qemu, `PROC_EXE=1`), so BusyBox `pgrep -x`
   misses a program started by its path here too instead of hiding a defect that

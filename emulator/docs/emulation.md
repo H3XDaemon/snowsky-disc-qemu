@@ -276,9 +276,10 @@ Those other sensors are not needed for boot and are not emulated.
   only ever draws to buf0/buf1 (alternating), so buf2 stays black. Prefer the
   `emu/fb-live` marker (0/1) or the viewer's `/frame` endpoint for the current frame.
   Non-black counts alone cannot distinguish an old frame from the latest one.
-- **`sysconfig.db missing` on the very first `10_setup_env` of a fresh rootfs** — expected
-  (see the `/usr/data` catch above); the script seeds `/usr/data` then primes the DB. If it
-  still reports missing after priming, check `/work/mq_player.log`.
+- **`sysconfig.db absent` on the very first `10_setup_env` of a fresh rootfs** — expected
+  (see the `/usr/data` catch above); the script seeds `/usr/data` then primes the DB, waiting
+  for the `SYSCONFIG` table rather than the file (two attempts). If it still reports no
+  table after priming, check `/work/mq_player.log`.
 - **`/work/mq_player.log` = `Error: zlog_init`** — the backend can't init logging because the
   zlog config isn't in `usr/data/fiio/log/`. `10_setup_env.sh` seeds it from
   `usr/project/config/zlog_{player,ui}.conf`; if the seed step didn't run (older checkout),
