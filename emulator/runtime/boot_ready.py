@@ -48,6 +48,9 @@ def watched(name, pid, proc=Path('/proc')):
     invisible to stock's watch loop on the player, while `exec -a mq_ui ...` is found.
     The guest's own view of cmdline shows the same under PROC_EXE (emulation.md);
     this reads the container's view, so it holds either way.
+
+    NAME is taken literally here; BusyBox compiles it as an extended regex, so for a
+    name with `.` or other metacharacters (`fiio_init.sh`) the player matches more.
     """
     first = argv0(pid, proc)
     if first is None or name not in first:

@@ -404,6 +404,9 @@ See emulator/docs/stock-init.md (static programs) and emulator/docs/limits.md.
 +   or explicit `qemu PROGRAM ...`. */
 +static int disc_guest_argv(pid_t pid, char *out, size_t size, char *program, size_t psize)
 +{
++    /* Bounds: the kernel's text is read into 4096 bytes and split into 64 fields at most.
++       Enough for argv[0] and pgrep -x; `pgrep -f` or `ps` on a longer command line see it
++       cut short here where the player shows all of it. */
 +    char name[48], raw[4096], *fields[64];
 +    const char *base;
 +    int fd, n, count = 0, first, prog, i, total = 0;
@@ -506,18 +509,15 @@ See emulator/docs/stock-init.md (static programs) and emulator/docs/limits.md.
 +    return fd;
 +}
 +
-+/* readlink of /proc/<pid>/exe for another guest process; -2 when not ours. */
++/* readlink of /proc/<pid>/exe for another guest process; -2 when not ours. The path
++   test comes first: the marker is read only for such a path, never for other readlinks. */
 +static abi_long disc_readlink_exe(const char *filename, char *buf, abi_long size)
 +{
 +    char program[PATH_MAX];
-+    pid_t pid;
++    pid_t pid = disc_proc_pid(filename, "exe");
 +    abi_long len;
 +
-+    if (!disc_marker_is_one(DISC_PROC_MARKER)) {
-+        return -2;
-+    }
-+    pid = disc_proc_pid(filename, "exe");
-+    if (!pid || !disc_guest_program(pid, program, sizeof program)) {
++    if (!pid || !disc_marker_is_one(DISC_PROC_MARKER) || !disc_guest_program(pid, program, sizeof program)) {
 +        return -2;
 +    }
 +    len = MIN((abi_long)strlen(program), size);
@@ -539,21 +539,24 @@ See emulator/docs/stock-init.md (static programs) and emulator/docs/limits.md.
      ie = ioctl_entries;
      for(;;) {
          if (ie->target_cmd == 0) {
-@@ -8334,6 +8823,21 @@
+@@ -8334,6 +8823,24 @@
          return fd;
      }
  
-+    if (disc_marker_is_one(DISC_PROC_MARKER)) {     /* another guest process, as the player shows it */
++    /* Another guest process, as the player shows it. The path test is a string compare;
++       the marker is read only for /proc/<pid>/cmdline|exe, so every other open pays nothing. */
++    if (strncmp(pathname, "/proc/", 6) == 0) {
 +        char program[PATH_MAX];
 +        pid_t pid = disc_proc_pid(pathname, "cmdline");
 +
-+        if (pid) {
++        if (pid && disc_marker_is_one(DISC_PROC_MARKER)) {
 +            int fd = disc_open_cmdline(pid);
 +
 +            if (fd != -2) {
 +                return fd;
 +            }
-+        } else if ((pid = disc_proc_pid(pathname, "exe")) && disc_guest_program(pid, program, sizeof program)) {
++        } else if (!pid && (pid = disc_proc_pid(pathname, "exe")) && disc_marker_is_one(DISC_PROC_MARKER)
++                   && disc_guest_program(pid, program, sizeof program)) {
 +            return safe_openat(dirfd, path(program), flags, mode);
 +        }
 +    }
