@@ -18,9 +18,9 @@ class FrameTransportTests(unittest.TestCase):
         finished = self.finished
 
         class Handler(stream.Handler):
-            def _frame_stream(self):
+            def _frame_stream(self, **kwargs):
                 try:
-                    super()._frame_stream()
+                    super()._frame_stream(**kwargs)
                 finally:
                     finished.set()
 
@@ -43,13 +43,13 @@ class FrameTransportTests(unittest.TestCase):
         for p in reversed(self.patches):
             p.stop()
 
-    def connect(self):
+    def connect(self, path='/stream', content_type='multipart/x-mixed-replace; boundary=FRAME'):
         connection = http.client.HTTPConnection(*self.server.server_address, timeout=2)
-        connection.request('GET', '/stream')
+        connection.request('GET', path)
         response = connection.getresponse()
         self.clients.append((connection, response))
         self.assertEqual(response.status, 200)
-        self.assertIn('boundary=FRAME', response.getheader('Content-Type'))
+        self.assertEqual(response.getheader('Content-Type'), content_type)
         return response
 
     def frame(self, response):
@@ -73,6 +73,18 @@ class FrameTransportTests(unittest.TestCase):
         expected = bytes((40, 20, 42)) * (W * H)
         self.assertEqual(decode_png(self.frame(response)), expected)
         self.assertEqual(decode_png(self.frame(self.connect())), expected)
+
+    def test_raw_stream_is_the_same_framing_as_plain_bytes(self):
+        """frames.js reads the parts itself, so it asks for application/octet-stream:
+        WebKit's fetch() never delivers a multipart/x-mixed-replace body to the page."""
+        raw = self.connect('/stream?raw=1', 'application/octet-stream; boundary=FRAME')
+        multipart = self.connect()
+        self.assertEqual(self.frame(raw), self.state.png)
+        self.assertEqual(self.frame(multipart), self.state.png)
+        self.state.update_frame(pixels(43) * 2, 1, True)
+        self.assertEqual(self.frame(multipart), self.frame(raw))
+        self.assertEqual(decode_png(self.frame(raw)), bytes((40, 20, 43)) * (W * H))
+        self.connect('/stream?raw=0')                       # anything but 1 keeps the browser type
 
     def test_disconnect_releases_handler(self):
         response = self.connect()

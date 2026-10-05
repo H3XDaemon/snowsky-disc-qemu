@@ -7,7 +7,10 @@ page into synthetic touches appended to `$ROOTFS/dev/input/event1` — i.e. you 
 the real stock UI from a browser on the host, no hardware.
 
   GET /            HTML page (stream + pointer capture)
-  GET /stream      multipart/x-mixed-replace PNG stream (the live screen)
+  GET /stream      multipart/x-mixed-replace PNG stream (the live screen; a browser's <img>)
+  GET /stream?raw=1  the same frames and framing as application/octet-stream: what the
+                   page's frames.js reads (WebKit special-cases multipart/x-mixed-replace
+                   in fetch(), which left Safari's viewer black)
   GET /frame       single current PNG
   GET /tap?x&y     short tap at display coords (press, hold ~0.3s, release)
   GET /down?x&y    press (start of a drag/swipe)
@@ -198,7 +201,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(png)
         elif p == '/stream':
-            self._frame_stream()
+            self._frame_stream(raw=qs.get('raw', [''])[0] == '1')
         elif p == '/key':
             k = qs.get('k', [''])[0]
             code = KEYS.get(k)
@@ -240,12 +243,17 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('Content-Length', '0')
             self.end_headers()
 
-    def _frame_stream(self):
+    def _frame_stream(self, raw=False):
         self.close_connection = True
         self.connection.settimeout(5)  # Bound blocked writes to slow/disconnected clients.
         try:
             self.send_response(200)
-            self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=FRAME')
+            # One framing, two labels: the multipart type lets a browser render the stream
+            # natively in <img>; frames.js parses the parts itself and asks for plain bytes,
+            # because WebKit's fetch() handles multipart/x-mixed-replace as an image loader
+            # would and never hands the body to the page (Safari showed a black screen).
+            self.send_header('Content-Type', ('application/octet-stream' if raw else 'multipart/x-mixed-replace')
+                             + '; boundary=FRAME')
             self.send_header('Cache-Control', 'no-store, no-transform')
             self.send_header('X-Accel-Buffering', 'no')
             self.send_header('Connection', 'close')

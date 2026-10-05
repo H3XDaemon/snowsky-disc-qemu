@@ -175,6 +175,9 @@ Active firmware: **V2.57**. Local protocol research is finalized in
   restarts stock's pair without end on the player (#57). The docs now state
   BusyBox's matching rules; `boot_ready.watched()` applies them from the container.
   [Process identity](emulator/docs/stock-init.md#process-identity-under-qemu-user).
+- The viewer's screen stayed black in Safari: its page now reads the frame stream
+  as plain bytes (`/stream?raw=1`), which WebKit's `fetch()` delivers, instead of
+  the multipart type it swallows. Reported in #56. [Viewer](viewer/docs/usage.md).
 
 Detailed progress, limitations and follow-ups: [protocol research](research/docs/status.md).
 
