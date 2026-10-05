@@ -5,7 +5,8 @@ to take an integer from the environment. `--set COLUMN=INT` adds single values.
 Only existing integer columns of the one SYSCONFIG row are written.
 
 `primed` says whether the priming boot got as far as the SYSCONFIG table and its
-row: mq_player creates the file first, so the file alone proves nothing.
+row: mq_player creates the file first, so the file alone proves nothing. `priming`
+also tells an unprimed database (safe to start over) from one setup cannot read.
 """
 import json
 import os
@@ -47,20 +48,37 @@ def overrides(text):
     return values
 
 
-def primed(root):
-    """True once sysconfig.db holds the SYSCONFIG table with its one row.
+def priming(root):
+    """What the priming boot left in sysconfig.db: 'primed', 'unprimed', or an error.
 
-    mq_player creates the empty file before the table: a priming boot cut short in
-    between leaves a file without a table. While the player is still writing, the
-    read may be refused; that is "not yet" as well.
+    mq_player creates the empty file before the SYSCONFIG table: a priming cut short in
+    between leaves a file without the table. 'unprimed' is only that: no file, an
+    empty file, or no SYSCONFIG in sqlite_master — what setup may start over. A
+    database it cannot read (locked, a WAL without its -shm, damaged) or one with
+    other than one row is neither: ValueError says why, and setup stops rather than
+    delete a guest's settings it could not look at.
     """
     database = Path(root) / DATABASE
-    if not database.is_file():
-        return False
+    if not database.is_file() or database.stat().st_size == 0:
+        return 'unprimed'
     try:
         with sqlite3.connect(f'file:{database}?mode=ro', uri=True, timeout=1) as db:
-            return db.execute('SELECT COUNT(*) FROM SYSCONFIG').fetchone() == (1,)
-    except sqlite3.Error:
+            if not db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='SYSCONFIG'").fetchone():
+                return 'unprimed'
+            rows = db.execute('SELECT COUNT(*) FROM SYSCONFIG').fetchone()[0]
+    except sqlite3.Error as exc:
+        raise ValueError(f'sysconfig.db could not be read: {exc}') from None
+    if rows != 1:
+        raise ValueError(f'sysconfig.db has {rows} SYSCONFIG rows, expected one')
+    return 'primed'
+
+
+def primed(root):
+    """True once the SYSCONFIG table and its one row are there and readable; anything
+    else, a refused read while the player still writes included, is "not yet"."""
+    try:
+        return priming(root) == 'primed'
+    except ValueError:
         return False
 
 
@@ -99,8 +117,9 @@ def apply(root, values):
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['apply', 'list', 'show', 'primed'],
-                        help='primed: exit 0 once the SYSCONFIG table and its row exist')
+    parser.add_argument('action', choices=['apply', 'list', 'show', 'primed', 'priming'],
+                        help='primed: exit 0 once the SYSCONFIG table and its row exist; '
+                             'priming: exit 0 primed, 1 unprimed (safe to start over), 2 unreadable or unexpected')
     parser.add_argument('--profile', default=os.environ.get('SETTINGS_PROFILE') or 'emulator')
     parser.add_argument('--set', default=os.environ.get('SETTINGS', ''), help='COLUMN=INT[,COLUMN=INT...]')
     args = parser.parse_args()
@@ -108,6 +127,8 @@ if __name__ == '__main__':
     try:
         if args.action == 'primed':
             parser.exit(0 if primed(target) else 1)
+        elif args.action == 'priming':
+            parser.exit(0 if priming(target) == 'primed' else 1)
         elif args.action == 'list':
             for name in profiles():
                 print(f"{name}: {json.loads((PROFILES / (name + '.json')).read_text())['description']}")

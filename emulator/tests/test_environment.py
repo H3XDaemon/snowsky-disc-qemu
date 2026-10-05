@@ -129,24 +129,39 @@ class SettingsTests(Base):
 
     def test_primed_means_the_table_and_its_row_not_the_file(self):
         """mq_player creates the file before the SYSCONFIG table: a priming boot cut short in
-        between left a file setup took for primed, and the settings step then failed (#58)."""
+        between left a file setup took for primed, and the settings step then failed (#58).
+        Only an unprimed database may be started over; one that cannot be read, or has
+        other than one row, is reported, never replaced."""
         database = self.root / settings.DATABASE
+        self.assertEqual(settings.priming(self.root), 'primed')
         self.assertTrue(settings.primed(self.root))
         database.unlink()
+        self.assertEqual(settings.priming(self.root), 'unprimed')
         self.assertFalse(settings.primed(self.root))
         database.write_bytes(b'')                                   # the file, nothing in it yet
-        self.assertFalse(settings.primed(self.root))
+        self.assertEqual(settings.priming(self.root), 'unprimed')
         with self.assertRaisesRegex(ValueError, 'no SYSCONFIG table'):
             settings.apply(self.root, {'BATTERY': 100})
         with sqlite3.connect(database) as db:
+            db.execute('CREATE TABLE OTHER (X INT)')                # a database, no SYSCONFIG
+        self.assertEqual(settings.priming(self.root), 'unprimed')
+        with sqlite3.connect(database) as db:
             db.execute('CREATE TABLE SYSCONFIG (ID INTEGER PRIMARY KEY autoincrement, BATTERY INT)')
-        self.assertFalse(settings.primed(self.root))                # the table, no row yet
+        with self.assertRaisesRegex(ValueError, '0 SYSCONFIG rows'):  # the table, no row: not ours to delete
+            settings.priming(self.root)
+        self.assertFalse(settings.primed(self.root))
         with sqlite3.connect(database) as db:
             db.execute('INSERT INTO SYSCONFIG VALUES (1, 87)')
-        self.assertTrue(settings.primed(self.root))
+        self.assertEqual(settings.priming(self.root), 'primed')
         with sqlite3.connect(database) as db:
             db.execute('INSERT INTO SYSCONFIG VALUES (2, 88)')
-        self.assertFalse(settings.primed(self.root))                # never two rows
+        with self.assertRaisesRegex(ValueError, '2 SYSCONFIG rows'):
+            settings.priming(self.root)
+        self.assertFalse(settings.primed(self.root))
+        database.write_bytes(b'not a database at all, 32 bytes...')
+        with self.assertRaisesRegex(ValueError, 'could not be read'):
+            settings.priming(self.root)
+        self.assertFalse(settings.primed(self.root))
 
     def test_every_shipped_profile_loads_and_is_listed(self):
         self.assertEqual(settings.profiles(), ['always-on', 'emulator', 'factory'])

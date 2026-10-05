@@ -219,33 +219,41 @@ cp -f "$ROOTFS/etc/hostapd.conf"          "$ROOTFS/usr/data/"           2>/dev/n
 #    stuck on the splash. Idempotent: skipped once the DB exists.
 #    mq_player creates the FILE before the SYSCONFIG table and its row: the priming waits
 #    for the table (emulator.runtime.settings primed), and a file left without one by a
-#    priming cut short (a loaded host) is started over, once more at most.
+#    priming cut short (a loaded host) is started over, once more at most. Only an
+#    UNPRIMED database is started over (none, empty, no SYSCONFIG in sqlite_master): one
+#    setup cannot read, or with other than one row, stops setup — it may be a guest's
+#    real settings, and deleting them unasked is worse than stopping.
 DB="$ROOTFS/usr/data/fiio/db/sysconfig.db"
 db_primed(){ ROOTFS="$ROOTFS" python3 -B -m emulator.runtime.settings primed; }
 prime_db(){
-  rm -f "$DB" "$DB-journal" "$DB-wal" "$DB-shm"
+  rm -f "$DB" "$DB-journal" "$DB-wal" "$DB-shm"     # callers reach here only for an unprimed database
   apply_ulimits
   rm -f "$ROOTFS/dev/mqueue/"* 2>/dev/null || true
   guest_run 45 /usr/bin/mq_ui     >/dev/null 2>&1 &
   sleep 3
   guest_run 42 /usr/bin/mq_player >/dev/null 2>&1 &
-  for i in $(seq 1 35); do db_primed && break; sleep 1; done
+  for i in $(seq 1 35); do db_primed && break; sleep 1; done   # any error is "not yet" within the wait
   kill_guest
   # The priming pair unmounted the card (and may or may not have mounted it again).
   if sd_node >/dev/null; then sd_mount; fi
   db_primed
 }
-if ! db_primed; then
-  [ -f "$DB" ] && log "sysconfig.db has no SYSCONFIG table (priming cut short) — priming again (~20s)..." \
-               || log "sysconfig.db absent (fresh /usr/data) — priming boot to create it (~20s)..."
-  if prime_db; then
-    log "  sysconfig.db created"
-  else
-    log "  no SYSCONFIG table within 35 s (host under load?) — one more priming boot"
-    prime_db && log "  sysconfig.db created" \
-      || err "  sysconfig.db still has no SYSCONFIG table after two priming boots (see $WORK/*.log)"
-  fi
-fi
+set +e; ROOTFS="$ROOTFS" python3 -B -m emulator.runtime.settings priming; DB_STATE=$?; set -e
+case "$DB_STATE" in
+  0) ;;
+  1)
+    [ -s "$DB" ] && log "sysconfig.db has no SYSCONFIG table (priming cut short) — priming again (~20s)..." \
+                 || log "sysconfig.db absent (fresh /usr/data) — priming boot to create it (~20s)..."
+    if prime_db; then
+      log "  sysconfig.db created"
+    else
+      log "  no SYSCONFIG table within 35 s (host under load?) — one more priming boot"
+      # What the first attempt left is this setup's own, never a guest's settings.
+      prime_db && log "  sysconfig.db created" \
+        || { err "  sysconfig.db still has no SYSCONFIG table after two priming boots (see $WORK/*.log)"; exit 1; }
+    fi ;;
+  *) err "  sysconfig.db is not usable; stopping rather than replacing it"; exit 1 ;;
+esac
 if db_primed; then
   # LANGUAGE is a 0-based index (switch in mq_ui FUN_004776e4): 0 zh(简体) 1 tw(繁體) 2 en
   # 3 ja 4 ko 5 es 6 it 7 de 8 pt 9 ru. Any in-range value ALSO skips the first-boot language
@@ -257,7 +265,7 @@ if db_primed; then
   SETTINGS_RESULT="$(python3 -B -m emulator.runtime.settings apply)" || { err "  settings were not applied"; exit 1; }
   log "sysconfig.db: $SETTINGS_RESULT"
 else
-  err "  could not create/find sysconfig.db — first real boot may stay on the splash"
+  err "  could not create/find sysconfig.db — the first real boot would stay on the splash"; exit 1
 fi
 
 # 7) Serial number. The player keeps a 14-character SN in /usr/data/fiio/sn.txt; a fresh
