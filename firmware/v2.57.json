@@ -203,7 +203,8 @@
     "image_route",
     "theme_styles",
     "favorite_positions",
-    "sd_hotplug"
+    "sd_hotplug",
+    "cover_animation_setting"
   ],
   "acceptance": [
     "full",

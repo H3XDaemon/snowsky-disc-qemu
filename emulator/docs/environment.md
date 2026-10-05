@@ -102,7 +102,7 @@ profile from `emulator/settings/`:
 
 | Profile | Changes to the stock-created row |
 | --- | --- |
-| `emulator` (default) | `LOCAL_IMG_ANIM=0`, `BATTERY=100`, `LANGUAGE=$LANG_CODE` — straight to the main menu |
+| `emulator` (default) | `BATTERY=100`, `LANGUAGE=$LANG_CODE` — straight to the main menu. On V2.40 setup also writes `LOCAL_IMG_ANIM=0`; on V2.57 that column is the player's Cover Animation choice and is kept |
 | `factory` | None: the player after a firmware install. `LANGUAGE=100` shows the first-boot language wizard and `LOCAL_IMG_ANIM=1` enables the boot-logo animation. On V2.57 the animation does not hide the screen behind it: the wizard appeared in both boot modes, and with a valid `LANGUAGE` the main menu did ([emulation](emulation.md)). Stock's own "Reset all" writes the same two values ([report](../../research/docs/reports/reset-all.md)) |
 | `always-on` | `emulator` plus `LIGTH_ON_TIME=7` (display never times out) |
 

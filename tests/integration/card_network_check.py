@@ -250,7 +250,9 @@ def check_isolated(device):
 
 def main():
     require_acceptance('card-network')
-    script('10_setup_env.sh', SDCARD_MB=str(CARD_MB), SDCARD_FS='exfat', SDCARD_PARTITION='1', USERDATA_MB='83')
+    # LOCAL_IMG_ANIM=0: a non-stock value, so check_reset_all can see Reset all restore 1.
+    script('10_setup_env.sh', SDCARD_MB=str(CARD_MB), SDCARD_FS='exfat', SDCARD_PARTITION='1', USERDATA_MB='83',
+           SETTINGS='LOCAL_IMG_ANIM=0')
     check_card()
     device = Device(ROOT)
     controls = Peripherals(device)

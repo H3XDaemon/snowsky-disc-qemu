@@ -154,6 +154,11 @@ Active firmware: **V2.57**. Local protocol research is finalized in
 
 ### Fixed
 
+- Settings > Cover Animation no longer returns to Static after `./emulator/run.sh boot`:
+  setup forced `LOCAL_IMG_ANIM=0`, which on V2.57 is that setting. It now does so on V2.40
+  only (a firmware profile without the `cover_animation_setting` capability). A work volume
+  set up before this fix stays on Static until Rotate is chosen once.
+  [Settings](emulator/docs/settings.md).
 - A failed SD eject (busy card) no longer leaves its message on the viewer's status
   line until the next peripheral action; it clears after eight seconds.
 - Live sound: the audio shim paced output slower than real time (0.973× on a phone),

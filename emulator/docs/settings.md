@@ -37,7 +37,7 @@ the UI and backend inconsistent, and a subsequent stock save may overwrite the e
 | `KEY_SINGLE_CLICK_SLE` | `0` switch track, `1` adjust volume | Single press of the volume buttons. Observed default `1`. |
 | `KEY_DOUBLE_CLICK_SLE` | `0` switch track, `1` adjust volume | Double press of the volume buttons. Observed default `0`. |
 | `KEY_LONG_PRESS_SLE` | `0` switch track, `1` adjust volume | Held volume buttons. Observed default `1`; GPIO and repeated gesture delivery also matter. |
-| `LOCAL_IMG_ANIM` | `0` disabled, `1` enabled | Setup forces `0`: otherwise the stock startup animation can cover the working main screen under emulation. |
+| `LOCAL_IMG_ANIM` | V2.57: Settings > Cover Animation, `1` Rotate (stock default), `0` Static | Checked 2026-10-05 by toggling the menu and reading the row. Setup and `settings apply` leave it as the player saved it unless `SETTINGS` or the profile names the column. On a firmware profile without the `cover_animation_setting` capability (V2.40) they write `0` unless the profile is `factory`, or the profile JSON or `SETTINGS` names the column, because there the stock startup animation covers the working main screen under emulation. |
 | `BATTERY` | Setup writes `100` | Cached configuration value. The actual emulated battery also needs the sysfs capacity/status stubs from setup. |
 | `LIGHT_LEVEL` | Observed boot value `20`; full range not established | Persistent brightness setting. Live screen on/off is read from the brightness sysfs file; a positive configured level does not itself mean the screen is awake. |
 | `OUT_DEV` | `6` observed for local `I2S3_OUT` | Runtime route selection depends on card discovery and work mode. Do not force this field as a substitute for emulating the device. Other route values remain unvalidated. |
@@ -113,7 +113,7 @@ displayed Russian, SQLite retained `LANGUAGE=9`, and `probe_keys.py` reported th
 requested `1/0/1` assignments from guest memory. The interactive volume was not edited.
 
 `./emulator/run.sh boot` runs **setup first**. Setup overwrites `LANGUAGE` with `LANG_CODE`
-(default `2`), `BATTERY=100`, and `LOCAL_IMG_ANIM=0`. Therefore use `20_boot.sh`
+(default `2`) and `BATTERY=100` (and `LOCAL_IMG_ANIM=0` on V2.40). Therefore use `20_boot.sh`
 directly after an offline language edit, or explicitly pass the setup override:
 
 ```sh

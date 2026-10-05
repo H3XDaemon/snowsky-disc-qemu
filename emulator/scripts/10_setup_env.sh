@@ -209,14 +209,14 @@ cp -f "$ROOTFS"/usr/project/db/*          "$ROOTFS/usr/data/fiio/db/"   2>/dev/n
 cp -f "$ROOTFS"/usr/project/config/wifi/* "$ROOTFS/usr/data/fiio/wifi/" 2>/dev/null || true
 cp -f "$ROOTFS/etc/hostapd.conf"          "$ROOTFS/usr/data/"           2>/dev/null || true
 
-# 6) Config DB: disable the boot logo animation (on V2.40 an infinite-loop overlay drawn on
-#    top of the already-built main screen that never cleared under emu; V2.57 shows the
-#    screen regardless, see emulator/docs/emulation.md).
+# 6) Config DB: apply the settings profile (and on V2.40 disable the boot logo animation,
+#    an infinite-loop overlay drawn on top of the already-built main screen that never
+#    cleared under emu; V2.57 shows the screen regardless, see emulator/docs/emulation.md).
 #    /usr/data is a SEPARATE UBIFS partition on the device (S21mount_ubifs) and is empty
 #    in the squashfs, so on a fresh rootfs sysconfig.db does not exist yet — mq_player
 #    creates it on first boot with LOCAL_IMG_ANIM=1. We must prime it (one throwaway boot
-#    to create the DB) BEFORE we can set the flag; otherwise the very first real boot is
-#    stuck on the splash. Idempotent: skipped once the DB exists.
+#    to create the DB) BEFORE the settings profile can be applied; on V2.40 the very first
+#    real boot is otherwise stuck on the splash. Idempotent: skipped once the DB exists.
 DB="$ROOTFS/usr/data/fiio/db/sysconfig.db"
 if [ ! -f "$DB" ]; then
   log "sysconfig.db absent (fresh /usr/data) — priming boot to create it (~20s)..."
@@ -235,9 +235,11 @@ if [ -f "$DB" ]; then
   # LANGUAGE is a 0-based index (switch in mq_ui FUN_004776e4): 0 zh(简体) 1 tw(繁體) 2 en
   # 3 ja 4 ko 5 es 6 it 7 de 8 pt 9 ru. Any in-range value ALSO skips the first-boot language
   # wizard (the wizard shows only while LANGUAGE is out of range, e.g. the fresh default 100).
-  # The default profile sets LOCAL_IMG_ANIM=0, BATTERY=100 and LANGUAGE=$LANG_CODE (default 2 =
-  # English). SETTINGS_PROFILE selects another preset from emulator/settings/ (e.g. factory =
-  # what stock created, untouched); SETTINGS="COLUMN=INT,..." adds single values.
+  # The default profile sets BATTERY=100 and LANGUAGE=$LANG_CODE (default 2 = English).
+  # SETTINGS_PROFILE selects another preset from emulator/settings/ (e.g. factory = what stock
+  # created, untouched); SETTINGS="COLUMN=INT,..." adds single values.
+  # On firmware without the cover_animation_setting capability (V2.40) it also writes
+  # LOCAL_IMG_ANIM=0 (settings.firmware_defaults).
   export LANG_CODE="${LANG_CODE:-2}"
   SETTINGS_RESULT="$(python3 -B -m emulator.runtime.settings apply)" || { err "  settings were not applied"; exit 1; }
   log "sysconfig.db: $SETTINGS_RESULT"

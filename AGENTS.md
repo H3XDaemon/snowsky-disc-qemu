@@ -9,8 +9,9 @@ and drive its UI, as groundwork for custom firmware / a sync bridge.
 Full boot to the **main menu** works, **touch injection** works, and the **SD card / File
 Browser** works (drop media in `./emulator/sdcard`, browse it to the leaf tracks). The three fixes that
 got the UI up (all encoded in `emulator/scripts/10_setup_env.sh`): raise **`RLIMIT_MSGQUEUE`**
-(`ulimit -q`), stub the **battery** sysfs at 100 %, and set **`LOCAL_IMG_ANIM=0`** to kill
-the boot-animation overlay. Touch coordinates are **180°-rotated** and press/release must be
+(`ulimit -q`), stub the **battery** sysfs at 100 %, and (V2.40 only) set **`LOCAL_IMG_ANIM=0`**
+to kill the boot-animation overlay. On V2.57 that column is the user's Cover Animation
+setting and setup writes it only when `SETTINGS` or the settings profile names it. Touch coordinates are **180°-rotated** and press/release must be
 **separated in time** (and a ~1 s hold is a long-press — use ~0.3 s to open a list item). The
 SD needs a re-mount after the guest's boot-time umount (`sd_mount()` in `lib.sh`). See
 `emulator/docs/status.md` for screenshots and what's next.
@@ -71,8 +72,8 @@ count printed by `fb2png.py` is only a fallback heuristic, not evidence of recen
   rootfs, both handled by `10_setup_env.sh`: (a) it must be **seeded** with the zlog configs
   (`usr/project/config/zlog_{player,ui}.conf` → `usr/data/fiio/log/`) + `usr/project/db/*`, or
   `mq_player` dies at `zlog_init` and never creates `sysconfig.db`; (b) `sysconfig.db` is then
-  created on first boot with `LOCAL_IMG_ANIM=1`, so a **priming boot** is needed before the flag
-  can be set to 0. State persists in the `/work` Docker volume.
+  created on first boot, so a **priming boot** is needed before the settings profile can be
+  applied. State persists in the `/work` Docker volume.
 - If `docker run`/`start`/`exec` hangs and a new container is stuck in `Created` (existing ones
   still work), the Docker Desktop VM is wedged — **restart Docker Desktop**, then retry. Give it
   ≥8 GB. This is the same OOM-adjacent failure seen mid-project.

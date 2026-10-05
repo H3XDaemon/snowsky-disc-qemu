@@ -103,10 +103,10 @@ class SettingsTests(Base):
                               'FROM SYSCONFIG').fetchone()
 
     def test_default_profile_is_the_original_preset(self):
-        self.assertEqual(settings.load('emulator', {}), {'LOCAL_IMG_ANIM': 0, 'BATTERY': 100, 'LANGUAGE': '2'})
+        self.assertEqual(settings.load('emulator', {}), {'BATTERY': 100, 'LANGUAGE': '2'})
         changed = settings.apply(self.root, settings.load('emulator', {'LANG_CODE': '9'}))
-        self.assertEqual(self.row(), (9, 0, 100, 3, 0))
-        self.assertEqual(changed, {'BATTERY': (87, 100), 'LANGUAGE': (100, 9), 'LOCAL_IMG_ANIM': (1, 0)})
+        self.assertEqual(self.row(), (9, 1, 100, 3, 0))     # Cover Animation stays as the player saved it
+        self.assertEqual(changed, {'BATTERY': (87, 100), 'LANGUAGE': (100, 9)})
 
     def test_factory_profile_leaves_stock_defaults(self):
         self.assertEqual(settings.apply(self.root, settings.load('factory')), {})
@@ -115,7 +115,21 @@ class SettingsTests(Base):
     def test_overrides_and_always_on(self):
         values = {**settings.load('always-on', {}), **settings.overrides('MEMORY_PLAY=1, LANGUAGE=5')}
         settings.apply(self.root, values)
-        self.assertEqual(self.row(), (5, 0, 100, 7, 1))
+        self.assertEqual(self.row(), (5, 1, 100, 7, 1))
+
+    def test_cover_animation_is_forced_off_only_without_the_capability(self):
+        def cli(version, **extra):
+            with sqlite3.connect(self.root / settings.DATABASE) as db:
+                db.execute('UPDATE SYSCONFIG SET LOCAL_IMG_ANIM=1')
+            environment = {k: v for k, v in os.environ.items() if k not in ('SETTINGS', 'SETTINGS_PROFILE')}
+            subprocess.run([sys.executable, '-B', '-m', 'emulator.runtime.settings', 'apply'], check=True,
+                           cwd=SCRIPTS.parents[1], capture_output=True,
+                           env={**environment, 'ROOTFS': str(self.root), 'FW_VERSION': version, **extra})
+            return self.row()[1]
+        self.assertEqual(cli('2.40'), 0)                        # V2.40 needs it to reach the menu
+        self.assertEqual(cli('2.40', SETTINGS='LOCAL_IMG_ANIM=1'), 1)
+        self.assertEqual(cli('2.40', SETTINGS_PROFILE='factory'), 1)
+        self.assertEqual(cli('2.57'), 1)                        # the player's Cover Animation choice
 
     def test_bad_input_changes_nothing(self):
         for values in ({'NO_SUCH': 1}, {'LANGUAGE': 'two'}, {'ID': 2}, {'LANGUAGE; DROP TABLE SYSCONFIG': 1}):

@@ -133,9 +133,11 @@ That observation is from the original V2.40 work. **On V2.57 it does not
 reproduce** (checked 2026-10-02 in a direct boot): with `LOCAL_IMG_ANIM=1` and
 the fresh `LANGUAGE=100` the language wizard is shown, and with
 `LOCAL_IMG_ANIM=1` and a valid `LANGUAGE` the main menu is on screen 15 seconds
-after boot. The default preset still sets the flag to 0 (V2.40 needs it, and it
+after boot. Setup sets the flag to 0 on V2.40 only (V2.40 needs it, and it
 skips the logo); the `factory` [settings profile](environment.md#stock-settings-profiles)
-leaves it at 1.
+leaves it at 1. On V2.57 setup no longer writes it: the column is the Settings > Cover
+Animation choice (`1` Rotate, `0` Static), and forcing it reset that choice at every
+`./emulator/run.sh boot`.
 
 **Fix:** `sqlite3 sysconfig.db "UPDATE SYSCONFIG SET LOCAL_IMG_ANIM=0"` → the overlay is
 skipped and the real first-boot flow can proceed. Current setup also presets
@@ -154,8 +156,8 @@ don't run init, so:
    created** — so on a truly fresh rootfs you're stuck on the splash with an empty
    `usr/data/fiio/db/`.
 2. **Priming boot** — even seeded, `sysconfig.db` is created by `mq_player` on first boot with
-   `LOCAL_IMG_ANIM=1`. So a throwaway boot creates the DB, then we set `LOCAL_IMG_ANIM=0`, then
-   boot for real.
+   `LOCAL_IMG_ANIM=1`. So a throwaway boot creates the DB, then (V2.40 only) we set
+   `LOCAL_IMG_ANIM=0`, then boot for real.
 
 `emulator/scripts/10_setup_env.sh` does both automatically. The opt-in
 [stock-init boot](stock-init.md) runs the real `rcS`, `S98FIIO` and `fiio_init.sh`

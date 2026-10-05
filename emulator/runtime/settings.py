@@ -10,6 +10,8 @@ from pathlib import Path
 import re
 import sqlite3
 
+from firmware.profile import selected_profile, supports
+
 PROFILES = Path(__file__).resolve().parents[1] / 'settings'
 DATABASE = 'usr/data/fiio/db/sysconfig.db'
 REFERENCE = re.compile(r'\$\{([A-Z_][A-Z0-9_]*):-(-?\d+)\}')
@@ -32,6 +34,17 @@ def load(name, environment=os.environ):
             value = environment.get(match[1]) or match[2]
         values[column] = value
     return values
+
+
+def firmware_defaults(profile, firmware):
+    """Values a firmware build needs whatever the settings profile says; the profile and
+    `--set` still override them. Without the reviewed cover_animation_setting capability
+    (V2.40) LOCAL_IMG_ANIM=1 draws a boot-logo overlay that never clears under emulation.
+    With it (V2.57) the column is Settings > Cover Animation, 1 Rotate, 0 Static, and setup
+    keeps what the player saved. `factory` stays the untouched stock row."""
+    if profile == 'factory' or supports(firmware, 'cover_animation_setting'):
+        return {}
+    return {'LOCAL_IMG_ANIM': 0}
 
 
 def overrides(text):
@@ -93,7 +106,8 @@ if __name__ == '__main__':
             from emulator.runtime.keys import Device
             if Device(target).processes():
                 raise ValueError('Stop the guest first: the running player owns its settings')
-            values = {**load(args.profile), **overrides(args.set)}
+            values = {**firmware_defaults(args.profile, selected_profile()), **load(args.profile),
+                      **overrides(args.set)}
             changed = apply(target, values)
             print(f'settings profile {args.profile}: ' +
                   (', '.join(f'{c} {old}->{new}' for c, (old, new) in changed.items()) or 'no change'))

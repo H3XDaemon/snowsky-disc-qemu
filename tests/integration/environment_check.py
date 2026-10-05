@@ -68,9 +68,10 @@ def main():
     script('10_setup_env.sh', BATTERY_PROFILE='device', BATTERY_CAPACITY='64', BATTERY_VOLTAGE_UV='3876000',
            BATTERY_TEMP='301', DEVICE_SN=SERIAL, USB_POWER='1', SETTINGS='MEMORY_PLAY=1')
     row = settings()
-    assert (row['LANGUAGE'], row['LOCAL_IMG_ANIM'], row['BATTERY'], row['MEMORY_PLAY']) == (2, 0, 100, 1), row
-    assert {k: v for k, v in row.items() if k not in ('LANGUAGE', 'LOCAL_IMG_ANIM', 'BATTERY', 'MEMORY_PLAY')} == \
-        {k: v for k, v in stock.items() if k not in ('LANGUAGE', 'LOCAL_IMG_ANIM', 'BATTERY', 'MEMORY_PLAY')}
+    # LOCAL_IMG_ANIM (Cover Animation) keeps the stock value: setup forces it only on V2.40.
+    assert (row['LANGUAGE'], row['BATTERY'], row['MEMORY_PLAY']) == (2, 100, 1), row
+    assert {k: v for k, v in row.items() if k not in ('LANGUAGE', 'BATTERY', 'MEMORY_PLAY')} == \
+        {k: v for k, v in stock.items() if k not in ('LANGUAGE', 'BATTERY', 'MEMORY_PLAY')}
     gauge = battery.snapshot(ROOT)
     assert gauge == dict(profile='device', capacity='64', current_now='0', cycle_count='0', health='Good',
                          present='1', technology='Li-ion', temp='301', type='Mains', voltage_now='3876000'), gauge
