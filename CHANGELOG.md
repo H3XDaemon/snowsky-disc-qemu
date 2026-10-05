@@ -151,6 +151,10 @@ Active firmware: **V2.57**. Local protocol research is finalized in
 
 ### Fixed
 
+- Live sound: the audio shim paced output slower than real time (0.973× on a phone),
+  which left the browser short of audio every few seconds, and the viewer joined only
+  0.15 s behind the capture; it now joins 0.3 s behind. After both changes one 70 s
+  browser run recorded no gaps. [Audio](emulator/docs/audio.md).
 - Setup and cleanup of a fresh work volume no longer detach the card image of
   another running emulator container (loop devices are shared by the Docker VM).
 - WebSocket bridge releases its connection slot even when an invalid peer disconnects

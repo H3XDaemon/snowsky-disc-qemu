@@ -7,10 +7,14 @@
   // Live joins the current DAC output; only Replay reads historical capture.
   let replaying = false, joinLive = true, silent = true;
   const sources = new Set();
+  // How far behind the capture live playback joins. With the 0.08 s start margin in
+  // poll(), it is what covers the time between polls (two requests, then a 150 ms
+  // wait); at 0.15 s the first seconds after joining had audible gaps.
+  const LIVE_LAG = .3;
   function liveOffset(info) {
     const frameBytes = info.channels * info.sample_bytes;
     const frames = Math.floor(info.bytes / frameBytes);
-    return Math.max(0, frames - Math.ceil(info.rate * .15)) * frameBytes;
+    return Math.max(0, frames - Math.ceil(info.rate * LIVE_LAG)) * frameBytes;
   }
   let splitter, outputGains;
   function clear() {

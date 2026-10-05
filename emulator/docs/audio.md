@@ -11,7 +11,7 @@ No audio patches to `mq_player` are needed; the key-enable patch is unrelated.
 ```
 
 The lower-left headphone jack (**Enable sound**) joins the current captured PCM
-through Web Audio with a 150 ms look-back; it does not replay the recording from
+through Web Audio with a 300 ms look-back; it does not replay the recording from
 its beginning. Click the jack again to mute. **Debug → Replay capture** starts
 the current recording again. These viewer controls do
 not change firmware play/pause state. Browser playback buffers a little and can pause if
@@ -166,6 +166,16 @@ and available bytes; `/audio.pcm?generation=…&offset=…` returns bounded, fra
 and rejects stale generations. `viewer/static/audio.js` converts PCM to float samples and schedules
 them in Web Audio. Timing depends on decoder cost and host load; the earlier blanket claim
 that qemu cannot play FLAC in real time was not established.
+
+`tinyshim` paces `pcm_write` like a DAC: it keeps the time at which everything written so
+far will have played and blocks only until the next write fits in the configured buffer
+(period size × period count). An earlier version slept for the length of each write after
+the writer's own work, so output ran slower than real time by the per-period work: 0.973×
+on the Android phone (29.2 s of audio per 30 s). The browser loses 0.027 s of lag per
+second at that rate, so a 0.15 s lag runs out after about 6 s. After the change the phone
+measured 29.96 s per 30.05 s with the first request included. After both changes (this one
+and the 0.3 s look-back above), one 70 s browser run recorded no gaps. `emulator/tests/test_output_stream.py`
+checks the pacing under qemu-user.
 
 Future firmware analysis: [RE.md](../../research/docs/methods.md), [Ghidra tooling](../../research/ghidra/README.md).
 

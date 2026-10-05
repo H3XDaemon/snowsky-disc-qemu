@@ -46,6 +46,23 @@ class OutputStreamTests(unittest.TestCase):
         self.assertFalse(list((self.root / STREAM).glob('*.n')))          # no temporary left behind
         self.assertEqual((self.root / 'audio.fmt').read_bytes(), bytes([2, 0, 0, 0, 4, 0, 0, 0, 0x44, 0xac, 0, 0]))
 
+    def test_shim_paces_writes_at_the_sample_rate_not_slower(self):
+        """40 periods of 1024 frames at 44.1 kHz are 928.8 ms of audio (928 in whole ms).
+        With 2 ms of the writer's own work per period, the shim must still return within
+        that time (a DAC plays while the writer works). The last write returns when 3072
+        frames (the 4096-frame buffer minus that write, 70 ms) are left to play, about
+        861 ms in; the check allows down to the whole buffer (93 ms) plus 30 ms of slack."""
+        probe = self.root / 'paceprobe'
+        subprocess.run(['mipsel-linux-gnu-gcc', '-static', '-O1', f'-DTINYSHIM_ROOT="{self.root}"',
+                        '-DTINYSHIM_NO_FOPEN', '-o', str(probe), str(REPO / 'emulator/tests/guest/streamprobe.c'),
+                        str(REPO / 'emulator/shims/tinyshim.c')], check=True)
+        run = subprocess.run(['qemu-mipsel-static', str(probe), 'pace'], check=True,
+                             capture_output=True, text=True)
+        elapsed = int(run.stdout.split()[-1])
+        audio = 40 * 1024 * 1000 // 44100
+        self.assertLessEqual(elapsed, audio, run.stdout)
+        self.assertGreaterEqual(elapsed, audio - 4096 * 1000 // 44100 - 30, run.stdout)
+
     def test_half_replaced_pair_is_reported_as_closed_not_an_error(self):
         self.files['status'].write_text('state: RUNNING\nowner_pid   : 7\n')          # hw_params still closed
         self.assertEqual(output_state(self.root)['stream'], 'closed')
