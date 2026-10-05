@@ -127,6 +127,27 @@ class SettingsTests(Base):
             settings.load('nope')
         self.assertEqual(self.row(), (100, 1, 87, 3, 0))
 
+    def test_primed_means_the_table_and_its_row_not_the_file(self):
+        """mq_player creates the file before the SYSCONFIG table: a priming boot cut short in
+        between left a file setup took for primed, and the settings step then failed (#58)."""
+        database = self.root / settings.DATABASE
+        self.assertTrue(settings.primed(self.root))
+        database.unlink()
+        self.assertFalse(settings.primed(self.root))
+        database.write_bytes(b'')                                   # the file, nothing in it yet
+        self.assertFalse(settings.primed(self.root))
+        with self.assertRaisesRegex(ValueError, 'no SYSCONFIG table'):
+            settings.apply(self.root, {'BATTERY': 100})
+        with sqlite3.connect(database) as db:
+            db.execute('CREATE TABLE SYSCONFIG (ID INTEGER PRIMARY KEY autoincrement, BATTERY INT)')
+        self.assertFalse(settings.primed(self.root))                # the table, no row yet
+        with sqlite3.connect(database) as db:
+            db.execute('INSERT INTO SYSCONFIG VALUES (1, 87)')
+        self.assertTrue(settings.primed(self.root))
+        with sqlite3.connect(database) as db:
+            db.execute('INSERT INTO SYSCONFIG VALUES (2, 88)')
+        self.assertFalse(settings.primed(self.root))                # never two rows
+
     def test_every_shipped_profile_loads_and_is_listed(self):
         self.assertEqual(settings.profiles(), ['always-on', 'emulator', 'factory'])
         for name in settings.profiles():

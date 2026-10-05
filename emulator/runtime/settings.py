@@ -3,6 +3,9 @@
 Profiles are JSON files in emulator/settings/. A value may be "${NAME:-default}"
 to take an integer from the environment. `--set COLUMN=INT` adds single values.
 Only existing integer columns of the one SYSCONFIG row are written.
+
+`primed` says whether the priming boot got as far as the SYSCONFIG table and its
+row: mq_player creates the file first, so the file alone proves nothing.
 """
 import json
 import os
@@ -44,6 +47,23 @@ def overrides(text):
     return values
 
 
+def primed(root):
+    """True once sysconfig.db holds the SYSCONFIG table with its one row.
+
+    mq_player creates the empty file before the table: a priming boot cut short in
+    between leaves a file without a table. While the player is still writing, the
+    read may be refused; that is "not yet" as well.
+    """
+    database = Path(root) / DATABASE
+    if not database.is_file():
+        return False
+    try:
+        with sqlite3.connect(f'file:{database}?mode=ro', uri=True, timeout=1) as db:
+            return db.execute('SELECT COUNT(*) FROM SYSCONFIG').fetchone() == (1,)
+    except sqlite3.Error:
+        return False
+
+
 def apply(root, values):
     """Write the values; returns the columns that changed as {column: (before, after)}."""
     checked = {}
@@ -59,6 +79,9 @@ def apply(root, values):
         raise ValueError('sysconfig.db missing; run setup (it primes the database) first')
     with sqlite3.connect(f'file:{database}?mode=rw', uri=True) as db:
         known = {row[1] for row in db.execute('PRAGMA table_info(SYSCONFIG)')}
+        if not known:
+            raise ValueError('sysconfig.db has no SYSCONFIG table: the priming boot was cut short '
+                             '(setup primes again when the table is missing)')
         unknown = sorted(set(checked) - known)
         if unknown:
             raise ValueError('Unknown SYSCONFIG column: ' + ', '.join(unknown))
@@ -76,13 +99,16 @@ def apply(root, values):
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['apply', 'list', 'show'])
+    parser.add_argument('action', choices=['apply', 'list', 'show', 'primed'],
+                        help='primed: exit 0 once the SYSCONFIG table and its row exist')
     parser.add_argument('--profile', default=os.environ.get('SETTINGS_PROFILE') or 'emulator')
     parser.add_argument('--set', default=os.environ.get('SETTINGS', ''), help='COLUMN=INT[,COLUMN=INT...]')
     args = parser.parse_args()
     target = os.environ.get('ROOTFS', '/work/rootfs')
     try:
-        if args.action == 'list':
+        if args.action == 'primed':
+            parser.exit(0 if primed(target) else 1)
+        elif args.action == 'list':
             for name in profiles():
                 print(f"{name}: {json.loads((PROFILES / (name + '.json')).read_text())['description']}")
         elif args.action == 'show':
