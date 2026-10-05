@@ -35,7 +35,26 @@ if (typeof document !== 'undefined') (() => {
     } catch (reason) { error(reason.message); }
     finally { peripheralBusy = false; render(); }
   }
-  byId('sd-toggle').onclick = () => peripheral({name:'sd', inserted:!state.sd_inserted});
+  // Ejecting is the destructive direction: it unmounts the card under the player,
+  // and during playback it fails outright. Require a second click to confirm.
+  const EJECT_CONFIRM_MS = 3000, EJECT_HINT = 'Click the card again to eject';
+  let ejectArmedUntil = 0, ejectTimer = null;
+  const disarmEject = () => { clearTimeout(ejectTimer); ejectTimer = null; ejectArmedUntil = 0; };
+  byId('sd-toggle').onclick = () => {
+    if (state.sd_inserted && performance.now() > ejectArmedUntil) {
+      disarmEject();
+      ejectArmedUntil = performance.now() + EJECT_CONFIRM_MS;
+      error(EJECT_HINT);
+      // The hint describes a window, so it has to go when the window closes.
+      ejectTimer = setTimeout(() => {
+        ejectArmedUntil = 0;
+        if (byId('control-error').textContent === EJECT_HINT) error('');
+      }, EJECT_CONFIRM_MS);
+      return;
+    }
+    disarmEject();
+    peripheral({name:'sd', inserted:!state.sd_inserted});
+  };
   byId('usb-toggle').onclick = () => peripheral({name:'usb', connected:!state.usb_connected});
   window.viewerControls = {
     update(value) { state = value; online = true; render(); },

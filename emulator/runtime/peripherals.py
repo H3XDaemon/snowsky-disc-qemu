@@ -20,12 +20,18 @@ SEND_UEVENT = ('import socket, sys\n'
 
 
 class Peripherals:
+    # A failed peripheral action is a finished event, not device state. Without a
+    # lifetime its message stays on the viewer's status line until some other
+    # peripheral operation happens to clear it.
+    ERROR_TTL = 8
+
     def __init__(self, device):
         self.device = device
         self.root = device.root
         self.lock = threading.RLock()
         self.operation = None
         self.error = None
+        self.error_at = 0.0
         self.profile_key = None
         self.profile = None
 
@@ -64,7 +70,12 @@ class Peripherals:
                     usb_connected=self._usb_connected(), jack=self.jack(),
                     boot_keys=sorted(gpio.armed(self.root)),
                     peripheral_transition=self.operation,
-                    peripheral_error=self.error)
+                    peripheral_error=self._expire_error())
+
+    def _expire_error(self):
+        if self.error is not None and time.monotonic() - self.error_at > self.ERROR_TTL:
+            self.error = None
+        return self.error
 
     def _usb_connected(self):
         try:
@@ -222,6 +233,7 @@ class Peripherals:
                     self._move_nodes(active, saved)
         except (OSError, ValueError, subprocess.SubprocessError) as exc:
             self.error = str(exc)
+            self.error_at = time.monotonic()
         finally:
             self.operation = None
 

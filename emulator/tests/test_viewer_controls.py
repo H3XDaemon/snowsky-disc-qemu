@@ -1,6 +1,7 @@
 """Guest-scoped peripheral validation and readback, without firmware."""
 from pathlib import Path
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 from emulator.runtime.keys import Device, BRIGHTNESS
@@ -107,6 +108,15 @@ class PeripheralTests(unittest.TestCase):
             self.controls._move_nodes([first, second], targets)
         self.assertEqual(first.read_text(), 'card')
         self.assertFalse(targets[0].exists())
+
+    def test_failed_peripheral_action_message_expires_instead_of_staying(self):
+        self.controls.error = 'SD card is busy; stop playback and retry'
+        self.controls.error_at = time.monotonic()
+        self.assertEqual(self.controls.snapshot()['peripheral_error'],
+                         'SD card is busy; stop playback and retry')
+        self.controls.error_at = time.monotonic() - Peripherals.ERROR_TTL - 1
+        self.assertIsNone(self.controls.snapshot()['peripheral_error'])
+        self.assertIsNone(self.controls.error)
 
     def test_forked_worker_with_inherited_argv_is_not_selected_as_player(self):
         with patch.object(self.controls, '_profile'), \

@@ -14,6 +14,8 @@ Active firmware: **V2.57**. Local protocol research is finalized in
 
 ### Added
 
+- Viewer LAN relay for one trusted device (Python 3.11+ on the host).
+  [Viewer guide](viewer/docs/usage.md#opt-in-lan-access-from-one-device).
 - Disc Assistant research prototype with Russian/English commands to find and play
   tracks, artists and albums from the device library, pause/resume playback and
   navigate the queue through a persistent text console. [Setup](experiments/disc_assistant/README.md).
@@ -105,6 +107,7 @@ Active firmware: **V2.57**. Local protocol research is finalized in
 
 ### Changed
 
+- Ejecting the SD card from the viewer takes a second click within 3 s.
 - The emulator image gains `exfatprogs`: rebuild it
   (`docker build -t snowsky-disc-qemu-ci emulator/docker`) before using an exFAT
   card. Everything else works with the previous image.
@@ -151,6 +154,8 @@ Active firmware: **V2.57**. Local protocol research is finalized in
 
 ### Fixed
 
+- A failed SD eject (busy card) no longer leaves its message on the viewer's status
+  line until the next peripheral action; it clears after eight seconds.
 - Live sound: the audio shim paced output slower than real time (0.973× on a phone),
   which left the browser short of audio every few seconds, and the viewer joined only
   0.15 s behind the capture; it now joins 0.3 s behind. After both changes one 70 s

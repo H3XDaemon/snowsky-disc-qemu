@@ -71,6 +71,26 @@ does not rebuild it. The host media directory itself is never ejected or modifie
 Each PCM session replaces the recording; `./emulator/run.sh audio` saves a WAV to `shots/audio.wav`.
 See [AUDIO.md](../../emulator/docs/audio.md) for limits and verification.
 
+## Opt-in LAN access from one device
+
+The viewer publishes on localhost. `viewer/lan_relay.py` runs on the host (Python 3.11
+or newer) and forwards one LAN address to it for one allowed client, bounded by a time
+limit:
+
+```sh
+python3 -m viewer.lan_relay --interface 192.0.2.10 --allow-client 192.0.2.50 \
+    --seconds 900 --acknowledge-unauthenticated-control
+```
+
+The viewer has no authentication: the allowed address can drive the screen, the
+physical buttons and power. An IP filter is not authentication. Require a trusted LAN
+and a bounded duration, and never autostart it or change the loopback publication.
+Behind a second router the allowed address is that router's WAN address, not the
+device's own; measure it rather than assuming. A Docker published port may not be a
+substitute: on one Windows 11 host with Docker Desktop and WSL, publishing the viewer to
+`0.0.0.0` or to the LAN address still left it unreachable from the LAN.
+Stock device services use the separate [LAN bridge](../../controller/docs/discovery.md).
+
 ## How it works
 
 `viewer/server.py` runs inside the container (wrapped by `viewer/scripts/40_stream.sh`, launched
