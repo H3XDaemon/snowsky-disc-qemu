@@ -81,14 +81,19 @@ Reference: [stock init, power events and `/usr/data`](../../emulator/docs/stock-
   mounts it a moment after `mq_player` starts; with the default image the
   emulator mounts it a few seconds after the UI is up. A boot stage that needs
   the card must wait for it.
-- `/proc/<pid>/comm` is the program name. `/proc/<pid>/exe` names the guest
-  program **for BusyBox and other dynamically linked readers**, so
-  `start-stop-daemon -S/-K -x` and pidfile checks work. A **static** program
-  still reads `qemu-mipsel-static` there, and `cmdline` always starts with it
-  (the rebuilt interpreter's file, `/usr/local/lib/qemu-mipsel-<build>/qemu-mipsel-static`)
-  (then the file's path, then the caller's `argv[0]`, which the program also
-  receives as its own `argv[0]`):
-  compare `comm` instead (identical on the player).
+- `/proc/<pid>/comm` is the program name. In a stock-init guest (`PROC_EXE=1`)
+  `/proc/<pid>/exe` names the guest program and `/proc/<pid>/cmdline` is the
+  `argv` the caller passed, for dynamic and static readers alike — the player's
+  view. So BusyBox `pgrep -x NAME` behaves as on the player: it matches `argv[0]`
+  first and falls back to the name only when the pattern occurs nowhere in
+  `argv[0]`; a wrapper ending in `exec /usr/bin/mq_ui "$@"` is **invisible to
+  stock's watch loop** on both, and the pair is restarted every 5 s (#57: the
+  interpreter's view, `cmdline` starting with qemu's path, had hidden this).
+  Start the stock programs with the bare name as `argv[0]`; `pidof`/`killall`
+  and `comm` find a program started by its path on both. From the container,
+  `emulator.runtime.boot_ready.watched(name, pid)` applies BusyBox's rule to the
+  container's view of `cmdline` (`argv0(pid)` reads the caller's `argv[0]` from
+  it: third field under binfmt `P`, after `-0` for an explicit qemu).
 - Use `guest_run` for commands in a running guest: it joins the guest's
   namespaces. A program started with it is ended by reboot, power-off and cut.
 - `01_image_rootfs.sh` accepts a squashfs or a zero-padded partition image built
@@ -236,7 +241,13 @@ Additions only; nothing was renamed or removed.
 - `emulator.runtime.boot_ready`: `ready()` keeps its signature; it now requires a
   frame flushed by the UI holder itself (`emu/fb-flush` PID = holder's `NSpid`)
   and no longer reads `emu/fb-live`, which stays the viewer's buffer hint and is
-  not reset by the supervisor any more. New `flusher()`, `own_pid()`.
+  not reset by the supervisor any more. New `flusher()`, `own_pid()`, `argv0()`,
+  `watched()`. `holders()` is unchanged (comm-based, what `pidof` finds).
+- Guest-side `cmdline` of other guest processes changed under `PROC_EXE=1` (the
+  stock-init default): the player's `argv`, not qemu's. A guest-side reader that
+  took the interpreter's layout (the third field as `argv[0]`) must use the
+  first field now, or read the container's `/proc` (`argv0()`); the container's
+  view is unchanged. `PROC_EXE=0` keeps the old guest view.
 - New modules: `emulator.runtime.gpio`, `machine`, `guest_init`, `battery`,
   `settings`, `power_watch`, `card`, `network`, `abi`.
 - `ci/cleanup.sh` also detaches a `/usr/data` image.
