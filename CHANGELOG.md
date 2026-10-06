@@ -156,7 +156,8 @@ Active firmware: **V2.57**. Local protocol research is finalized in
 
 - Another website open in a browser on the same computer can no longer drive the viewer:
   `GET /tap`, `/swipe` and `/key?k=power` had no origin check, and the page could be
-  framed. Cross-site and DNS-rebound requests now get 403, and responses forbid framing.
+  framed. Cross-site and DNS-rebound requests now get 403, and responses forbid framing;
+  `localhost`, IP addresses, `*.local` names and names listed in `VIEWER_HOSTS` still work.
   [Viewer guide](viewer/docs/usage.md).
 - Settings > Cover Animation no longer returns to Static after `./emulator/run.sh boot`:
   setup forced `LOCAL_IMG_ANIM=0`, which on V2.57 is that setting. It now does so on V2.40

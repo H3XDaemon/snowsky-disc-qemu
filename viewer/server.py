@@ -41,6 +41,8 @@ from urllib.parse import urlparse, urlsplit, parse_qs
 ROOTFS = os.environ.get("ROOTFS", "/work/rootfs")
 PORT = int(os.environ.get("STREAM_PORT", "8080"))
 FPS = float(os.environ.get("STREAM_FPS", "12"))
+# Host names a browser may use besides localhost, IP literals and *.local (a reverse proxy).
+VIEWER_HOSTS = {h.strip().lower() for h in os.environ.get("VIEWER_HOSTS", "").split(",") if h.strip()}
 EVENT_HEARTBEAT = 15
 FRAME_HEARTBEAT = 15               # infrequent full refresh / dead-client detection
 FB = os.path.join(ROOTFS, "dev/fb0")
@@ -130,8 +132,10 @@ class Handler(BaseHTTPRequestHandler):
         <img> tag, and a DNS-rebound name could read /frame. Refused: a Sec-Fetch-Site
         other than same-origin or none, except a top-level navigation to the page "/"
         (Chrome marks a URL opened from another app as cross-site); a foreign Origin;
-        a Host that is a name other than localhost. A browser without Fetch Metadata
-        does not send Origin on a cross-site GET, so that GET still gets through."""
+        a Host name other than localhost, a *.local mDNS name (resolved only on the
+        local link, so public DNS cannot rebind it) or one listed in VIEWER_HOSTS.
+        A browser without Fetch Metadata does not send Origin on a cross-site GET, so
+        that GET still gets through."""
         site = self.headers.get('Sec-Fetch-Site', '')
         if site and site not in ('same-origin', 'none') and not (
                 self.headers.get('Sec-Fetch-Mode') == 'navigate'
@@ -143,7 +147,7 @@ class Handler(BaseHTTPRequestHandler):
                 name = urlsplit('//' + host).hostname or ''
             except ValueError:
                 return False
-            if name != 'localhost':
+            if name != 'localhost' and not name.endswith('.local') and name not in VIEWER_HOSTS:
                 try:
                     ipaddress.ip_address(name)
                 except ValueError:
