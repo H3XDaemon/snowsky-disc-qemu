@@ -32,12 +32,12 @@ the UI and backend inconsistent, and a subsequent stock save may overwrite the e
 
 | Column / setting | Values established so far | Effect and caveats |
 |---|---|---|
-| `LANGUAGE` | `0` Chinese simplified, `1` Chinese traditional, `2` English, `3` Japanese, `4` Korean, `5` Spanish, `6` Italian, `7` German, `8` Portuguese, `9` Russian | Zero-based firmware mapping. Fresh sentinel `100` opens the language wizard; an in-range value skips it. Setup presets `2` unless `LANG_CODE` overrides it. |
+| `LANGUAGE` | `0` Chinese simplified, `1` Chinese traditional, `2` English, `3` Japanese, `4` Korean, `5` Spanish, `6` Italian, `7` German, `8` Portuguese, `9` Russian | Zero-based firmware mapping. Fresh sentinel `100` opens the language wizard; an in-range value skips it. Setup presets `LANG_CODE` (default `2`) on a database it has just primed, and whenever the value is outside `0..9`; a language chosen in the menu is kept. |
 | `VOLUME` | Logical range `0..120`; effective maximum also depends on `MAX_VOL` | Prefer the live FiiO Link volume command. This is not the browser's independent sound-enable switch or captured PCM amplitude. |
 | `KEY_SINGLE_CLICK_SLE` | `0` switch track, `1` adjust volume | Single press of the volume buttons. Observed default `1`. |
 | `KEY_DOUBLE_CLICK_SLE` | `0` switch track, `1` adjust volume | Double press of the volume buttons. Observed default `0`. |
 | `KEY_LONG_PRESS_SLE` | `0` switch track, `1` adjust volume | Held volume buttons. Observed default `1`; GPIO and repeated gesture delivery also matter. |
-| `LOCAL_IMG_ANIM` | `0` disabled, `1` enabled | Setup forces `0`: otherwise the stock startup animation can cover the working main screen under emulation. |
+| `LOCAL_IMG_ANIM` | `0` Static, `1` Rotate | V2.57 Settings > Cover Animation (checked 2026-10-05 by toggling the menu and reading the row). Setup presets `0` only on a database it has just primed; later setups keep the player's choice. A volume set up before this rule keeps `0` until Rotate is chosen once. |
 | `BATTERY` | Setup writes `100` | Cached configuration value. The actual emulated battery also needs the sysfs capacity/status stubs from setup. |
 | `LIGHT_LEVEL` | Observed boot value `20`; full range not established | Persistent brightness setting. Live screen on/off is read from the brightness sysfs file; a positive configured level does not itself mean the screen is awake. |
 | `OUT_DEV` | `6` observed for local `I2S3_OUT` | Runtime route selection depends on card discovery and work mode. Do not force this field as a substitute for emulating the device. Other route values remain unvalidated. |
@@ -112,16 +112,21 @@ The sequence above was exercised on a disposable V2.57 volume: the restarted UI
 displayed Russian, SQLite retained `LANGUAGE=9`, and `probe_keys.py` reported the
 requested `1/0/1` assignments from guest memory. The interactive volume was not edited.
 
-`./emulator/run.sh boot` runs **setup first**. Setup overwrites `LANGUAGE` with `LANG_CODE`
-(default `2`), `BATTERY=100`, and `LOCAL_IMG_ANIM=0`. Therefore use `20_boot.sh`
-directly after an offline language edit, or explicitly pass the setup override:
+`./emulator/run.sh boot` runs **setup first**. Setup writes `BATTERY=100` every time. The
+player's own choices, `LANGUAGE` (from `LANG_CODE`, default `2`) and `LOCAL_IMG_ANIM=0`, are
+preset only on a database that setup has just primed (`settings apply --fresh`), so a language
+or Cover Animation chosen in the player's menu, or set by an offline edit, survives later boots.
+A `LANGUAGE` outside `0..9` (stock's initial `100`, which the menu cannot set) is no choice yet,
+so setup presets `LANG_CODE` then as well.
+`SETTINGS` names columns explicitly and is written on every setup:
 
 ```sh
-docker exec -e LANG_CODE=9 snowsky-disc-qemu bash /repo/emulator/scripts/10_setup_env.sh
+docker exec -e SETTINGS=LANGUAGE=9 snowsky-disc-qemu bash /repo/emulator/scripts/10_setup_env.sh
 docker exec snowsky-disc-qemu bash /repo/emulator/scripts/20_boot.sh
 ```
 
-`LANG_CODE` is a setup environment variable, not a firmware database column.
+`LANG_CODE` is a setup environment variable used when setup primes a new database, not a
+firmware database column.
 `GUEST_TTL`, `FW_VERSION`, viewer FPS and browser sound controls are emulator options,
 not stock player settings. See [VIEWER.md](../../viewer/docs/usage.md) and [PORTING.md](../../firmware/docs/porting.md).
 

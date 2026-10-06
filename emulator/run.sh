@@ -14,7 +14,7 @@
 #   ./emulator/run.sh keys <hold|release|arm|show> [KEYS]
 #                                        key pin levels; arm = held from the next power-on
 #   ./emulator/run.sh battery <show|set> [--capacity N] [--voltage UV] [--temp T]
-#   ./emulator/run.sh settings <list|show|apply> [--profile NAME] [--set COLUMN=INT,...]
+#   ./emulator/run.sh settings <list|show|apply> [--profile NAME] [--set COLUMN=INT,...] [--fresh]
 #   ./emulator/run.sh tap <x> <y>        inject a tap and capture PNGs
 #   ./emulator/run.sh view [port]        start the live viewer (default :8080)
 #   ./emulator/run.sh capture [prefix]   capture the current framebuffer

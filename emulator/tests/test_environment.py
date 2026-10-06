@@ -108,6 +108,19 @@ class SettingsTests(Base):
         self.assertEqual(self.row(), (9, 0, 100, 3, 0))
         self.assertEqual(changed, {'BATTERY': (87, 100), 'LANGUAGE': (100, 9), 'LOCAL_IMG_ANIM': (1, 0)})
 
+    def test_player_choices_are_preset_only_on_a_fresh_database(self):
+        """Cover Animation and the language are the player's own settings: a profile presets them
+        on a database that setup has just primed, and later setups keep what the player saved.
+        A LANGUAGE the menu cannot set (stock's initial 100) is no choice, so it is still preset."""
+        environment = {'LANG_CODE': '9'}
+        later = lambda: settings.profile_values('emulator', False, settings.row(self.root), environment)  # noqa: E731
+        self.assertEqual(settings.profile_values('emulator', True, {}, environment),
+                         {'LOCAL_IMG_ANIM': 0, 'BATTERY': 100, 'LANGUAGE': '9'})
+        self.assertEqual(settings.apply(self.root, later()), {'BATTERY': (87, 100), 'LANGUAGE': (100, 9)})
+        settings.apply(self.root, {'LANGUAGE': 5})                      # chosen in the player's menu
+        self.assertEqual(settings.apply(self.root, later()), {})
+        self.assertEqual(self.row(), (5, 1, 100, 3, 0))
+
     def test_factory_profile_leaves_stock_defaults(self):
         self.assertEqual(settings.apply(self.root, settings.load('factory')), {})
         self.assertEqual(self.row(), (100, 1, 87, 3, 0))

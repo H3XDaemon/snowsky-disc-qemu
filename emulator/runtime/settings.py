@@ -4,6 +4,13 @@ Profiles are JSON files in emulator/settings/. A value may be "${NAME:-default}"
 to take an integer from the environment. `--set COLUMN=INT` adds single values.
 Only existing integer columns of the one SYSCONFIG row are written.
 
+PLAYER_CHOICES are columns the user sets in the player's own Settings menu. A profile
+writes them only to a database that setup has just primed (`apply --fresh`); later
+setups (every `./emulator/run.sh boot`) keep what the player saved. One exception: a
+LANGUAGE outside the menu's 0..9 (stock's initial 100, which opens the first-boot
+wizard) is no choice yet, so the profile's language applies. `--set`/SETTINGS always
+writes, because it names a column explicitly.
+
 `primed` says whether the priming boot got as far as the SYSCONFIG table and its
 row: mq_player creates the file first, so the file alone proves nothing. `priming`
 also tells an unprimed database (safe to start over) from one setup cannot read.
@@ -18,6 +25,8 @@ PROFILES = Path(__file__).resolve().parents[1] / 'settings'
 DATABASE = 'usr/data/fiio/db/sysconfig.db'
 REFERENCE = re.compile(r'\$\{([A-Z_][A-Z0-9_]*):-(-?\d+)\}')
 COLUMN = re.compile(r'[A-Z][A-Z0-9_]*')
+# Settings > Cover Animation (1 Rotate, 0 Static) and the menu language.
+PLAYER_CHOICES = ('LOCAL_IMG_ANIM', 'LANGUAGE')
 
 
 def profiles():
@@ -36,6 +45,16 @@ def load(name, environment=os.environ):
             value = environment.get(match[1]) or match[2]
         values[column] = value
     return values
+
+
+def profile_values(name, fresh, current, environment=os.environ):
+    """The profile's values for this apply. Without `fresh` the player's own choices in
+    `current` (the row as it is) are left out, except a LANGUAGE the menu cannot set."""
+    values = load(name, environment)
+    if fresh:
+        return values
+    kept = {c for c in PLAYER_CHOICES if not (c == 'LANGUAGE' and current.get(c) not in range(10))}
+    return {k: v for k, v in values.items() if k not in kept}
 
 
 def overrides(text):
@@ -82,6 +101,13 @@ def primed(root):
         return False
 
 
+def row(root):
+    """The SYSCONFIG row as {column: value}."""
+    with sqlite3.connect(f'file:{Path(root) / DATABASE}?mode=ro', uri=True) as db:
+        db.row_factory = sqlite3.Row
+        return dict(db.execute('SELECT * FROM SYSCONFIG').fetchone())
+
+
 def apply(root, values):
     """Write the values; returns the columns that changed as {column: (before, after)}."""
     checked = {}
@@ -122,6 +148,8 @@ if __name__ == '__main__':
                              'priming: exit 0 primed, 1 unprimed (safe to start over), 2 unreadable or unexpected')
     parser.add_argument('--profile', default=os.environ.get('SETTINGS_PROFILE') or 'emulator')
     parser.add_argument('--set', default=os.environ.get('SETTINGS', ''), help='COLUMN=INT[,COLUMN=INT...]')
+    parser.add_argument('--fresh', action='store_true',
+                        help='the database was just primed: also preset ' + ', '.join(PLAYER_CHOICES))
     args = parser.parse_args()
     target = os.environ.get('ROOTFS', '/work/rootfs')
     try:
@@ -133,14 +161,13 @@ if __name__ == '__main__':
             for name in profiles():
                 print(f"{name}: {json.loads((PROFILES / (name + '.json')).read_text())['description']}")
         elif args.action == 'show':
-            with sqlite3.connect(f'file:{Path(target) / DATABASE}?mode=ro', uri=True) as db:
-                db.row_factory = sqlite3.Row
-                print(json.dumps(dict(db.execute('SELECT * FROM SYSCONFIG').fetchone())))
+            print(json.dumps(row(target)))
         else:
             from emulator.runtime.keys import Device
             if Device(target).processes():
                 raise ValueError('Stop the guest first: the running player owns its settings')
-            values = {**load(args.profile), **overrides(args.set)}
+            current = row(target) if primed(target) else {}     # apply() reports what is missing
+            values = {**profile_values(args.profile, args.fresh, current), **overrides(args.set)}
             changed = apply(target, values)
             print(f'settings profile {args.profile}: ' +
                   (', '.join(f'{c} {old}->{new}' for c, (old, new) in changed.items()) or 'no change'))

@@ -209,14 +209,14 @@ cp -f "$ROOTFS"/usr/project/db/*          "$ROOTFS/usr/data/fiio/db/"   2>/dev/n
 cp -f "$ROOTFS"/usr/project/config/wifi/* "$ROOTFS/usr/data/fiio/wifi/" 2>/dev/null || true
 cp -f "$ROOTFS/etc/hostapd.conf"          "$ROOTFS/usr/data/"           2>/dev/null || true
 
-# 6) Config DB: disable the boot logo animation (on V2.40 an infinite-loop overlay drawn on
-#    top of the already-built main screen that never cleared under emu; V2.57 shows the
-#    screen regardless, see emulator/docs/emulation.md).
+# 6) Config DB: apply the settings profile. On a database primed by this run it also presets
+#    the player's own choices (LOCAL_IMG_ANIM=0 Cover Animation Static, LANGUAGE=$LANG_CODE);
+#    later setups keep what the player saved there (emulator/docs/settings.md).
 #    /usr/data is a SEPARATE UBIFS partition on the device (S21mount_ubifs) and is empty
 #    in the squashfs, so on a fresh rootfs sysconfig.db does not exist yet — mq_player
-#    creates it on first boot with LOCAL_IMG_ANIM=1. We must prime it (one throwaway boot
-#    to create the DB) BEFORE we can set the flag; otherwise the very first real boot is
-#    stuck on the splash. Idempotent: skipped once the DB exists.
+#    creates it on first boot with LOCAL_IMG_ANIM=1 and LANGUAGE=100. We must prime it (one
+#    throwaway boot to create the DB) BEFORE the profile can be applied; otherwise the first
+#    real boot shows the language wizard. Idempotent: skipped once the DB exists.
 #    mq_player creates the FILE before the SYSCONFIG table and its row: the priming waits
 #    for the table (emulator.runtime.settings primed), and a file left without one by a
 #    priming cut short (a loaded host) is started over, once more at most. Only an
@@ -238,12 +238,14 @@ prime_db(){
   if sd_node >/dev/null; then sd_mount; fi
   db_primed
 }
+FRESH_DB=()                                         # --fresh once this run has primed the database
 set +e; ROOTFS="$ROOTFS" python3 -B -m emulator.runtime.settings priming; DB_STATE=$?; set -e
 case "$DB_STATE" in
   0) ;;
   1)
     [ -s "$DB" ] && log "sysconfig.db has no SYSCONFIG table (priming cut short) — priming again (~20s)..." \
                  || log "sysconfig.db absent (fresh /usr/data) — priming boot to create it (~20s)..."
+    FRESH_DB=(--fresh)
     if prime_db; then
       log "  sysconfig.db created"
     else
@@ -258,11 +260,13 @@ if db_primed; then
   # LANGUAGE is a 0-based index (switch in mq_ui FUN_004776e4): 0 zh(简体) 1 tw(繁體) 2 en
   # 3 ja 4 ko 5 es 6 it 7 de 8 pt 9 ru. Any in-range value ALSO skips the first-boot language
   # wizard (the wizard shows only while LANGUAGE is out of range, e.g. the fresh default 100).
-  # The default profile sets LOCAL_IMG_ANIM=0, BATTERY=100 and LANGUAGE=$LANG_CODE (default 2 =
-  # English). SETTINGS_PROFILE selects another preset from emulator/settings/ (e.g. factory =
-  # what stock created, untouched); SETTINGS="COLUMN=INT,..." adds single values.
+  # The default profile sets BATTERY=100 and, on a fresh database only, LOCAL_IMG_ANIM=0 and
+  # LANGUAGE=$LANG_CODE (default 2 = English). SETTINGS_PROFILE selects another preset from
+  # emulator/settings/ (e.g. factory = what stock created, untouched); SETTINGS="COLUMN=INT,..."
+  # adds single values and is written on every setup.
   export LANG_CODE="${LANG_CODE:-2}"
-  SETTINGS_RESULT="$(python3 -B -m emulator.runtime.settings apply)" || { err "  settings were not applied"; exit 1; }
+  SETTINGS_RESULT="$(python3 -B -m emulator.runtime.settings apply ${FRESH_DB[@]+"${FRESH_DB[@]}"})" \
+    || { err "  settings were not applied"; exit 1; }
   log "sysconfig.db: $SETTINGS_RESULT"
 else
   err "  could not create/find sysconfig.db — the first real boot would stay on the splash"; exit 1

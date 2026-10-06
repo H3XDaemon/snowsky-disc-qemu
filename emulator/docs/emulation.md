@@ -135,13 +135,18 @@ That observation is from the original V2.40 work. **On V2.57 it does not
 reproduce** (checked 2026-10-02 in a direct boot): with `LOCAL_IMG_ANIM=1` and
 the fresh `LANGUAGE=100` the language wizard is shown, and with
 `LOCAL_IMG_ANIM=1` and a valid `LANGUAGE` the main menu is on screen 15 seconds
-after boot. The default preset still sets the flag to 0 (V2.40 needs it, and it
-skips the logo); the `factory` [settings profile](environment.md#stock-settings-profiles)
-leaves it at 1.
+after boot. **On V2.40 it no longer reproduces either** (checked 2026-10-07 on a
+disposable volume with the current emulator): with `LOCAL_IMG_ANIM=1` and `LANGUAGE=2`
+the main menu was on screen at 20, 45 and 90 seconds after boot, in a direct and in a
+stock-init boot, the same as with `LOCAL_IMG_ANIM=0`. Which emulator change removed the
+overlay was not traced. On V2.57 the column is Settings > Cover Animation (1 Rotate,
+0 Static). The default preset sets it to 0 only on a database that setup has just primed,
+so a fresh volume still skips the logo and the player's later choice is kept; the
+`factory` [settings profile](environment.md#stock-settings-profiles) leaves it at 1.
 
-**Fix:** `sqlite3 sysconfig.db "UPDATE SYSCONFIG SET LOCAL_IMG_ANIM=0"` → the overlay is
-skipped and the real first-boot flow can proceed. Current setup also presets
-English, so the normal flow reaches the main menu without the language wizard;
+**Fix (original V2.40 work):** `sqlite3 sysconfig.db "UPDATE SYSCONFIG SET LOCAL_IMG_ANIM=0"`
+→ the overlay is skipped and the real first-boot flow can proceed. Current setup also presets
+English on a new database, so the normal flow reaches the main menu without the language wizard;
 the wizard appears only with an out-of-range `LANGUAGE` value.
 
 **Catch on a fresh rootfs (two parts):** `/usr/data` is a **separate UBIFS partition** on the
@@ -156,19 +161,19 @@ don't run init, so:
    created** — so on a truly fresh rootfs you're stuck on the splash with an empty
    `usr/data/fiio/db/`.
 2. **Priming boot** — even seeded, `sysconfig.db` is created by `mq_player` on first boot with
-   `LOCAL_IMG_ANIM=1`. So a throwaway boot creates the DB, then we set `LOCAL_IMG_ANIM=0`, then
-   boot for real.
+   `LOCAL_IMG_ANIM=1` and `LANGUAGE=100`. So a throwaway boot creates the DB, then setup presets
+   `LOCAL_IMG_ANIM=0` and the language, then boots for real.
 
 `emulator/scripts/10_setup_env.sh` does both automatically. The opt-in
 [stock-init boot](stock-init.md) runs the real `rcS`, `S98FIIO` and `fiio_init.sh`
 instead; the same seeded and primed `/usr/data` serves both modes. (The language choice and this flag then
-persist in the `/work` volume.)
+persist in the `/work` volume: later setups do not preset them again, see [settings](settings.md).)
 
 The first-boot **language wizard** is gated on the same DB: it shows only while `LANGUAGE` is
 out of range (fresh default 100). `LANGUAGE` is a **0-based index** (switch in mq_ui
 `FUN_004776e4`): `0 zh · 1 tw · 2 en · 3 ja · 4 ko · 5 es · 6 it · 7 de · 8 pt · 9 ru`. Setting
 any valid value picks the language and skips the wizard; `10_setup_env.sh` presets `LANG_CODE`
-(default 2 = English). (Out-of-range codes like 100/102 fall back to Chinese — which is why the
+(default 2 = English) on a database it has just primed. (Out-of-range codes like 100/102 fall back to Chinese — which is why the
 "language index = code − 100" guess was wrong.)
 
 ## Blocker 4 — the SD card / File Browser shows nothing

@@ -151,6 +151,12 @@ Active firmware: **V2.57**. Local protocol research is finalized in
 
 ### Fixed
 
+- Settings > Cover Animation and the language chosen in the player's menu no longer return to
+  Static and to `LANG_CODE` after `./emulator/run.sh boot` or `settings apply`: setup presets
+  `LOCAL_IMG_ANIM=0` and `LANGUAGE` only on a database it has just primed (and the language also
+  while none is chosen, for example after the player's Reset all). A new volume starts as before;
+  on a volume set up earlier, change them in the player once and they stay.
+  [Settings](emulator/docs/settings.md).
 - Another website open in a browser on the same computer can no longer drive the viewer:
   `GET /tap`, `/swipe` and `/key?k=power` had no origin check, and the page could be
   framed. Cross-site and DNS-rebound requests now get 403, and responses forbid framing;

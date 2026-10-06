@@ -111,8 +111,8 @@ never deletes unasked.
 
 | Profile | Changes to the stock-created row |
 | --- | --- |
-| `emulator` (default) | `LOCAL_IMG_ANIM=0`, `BATTERY=100`, `LANGUAGE=$LANG_CODE` — straight to the main menu |
-| `factory` | None: the player after a firmware install. `LANGUAGE=100` shows the first-boot language wizard and `LOCAL_IMG_ANIM=1` enables the boot-logo animation. On V2.57 the animation does not hide the screen behind it: the wizard appeared in both boot modes, and with a valid `LANGUAGE` the main menu did ([emulation](emulation.md)). Stock's own "Reset all" writes the same two values ([report](../../research/docs/reports/reset-all.md)) |
+| `emulator` (default) | `BATTERY=100`; on a database that setup has just primed also `LOCAL_IMG_ANIM=0` and `LANGUAGE=$LANG_CODE` — straight to the main menu |
+| `factory` | None: the player after a firmware install. `LANGUAGE=100` shows the first-boot language wizard and `LOCAL_IMG_ANIM=1` is Cover Animation Rotate (V2.57). The boot-logo animation does not hide the screen behind it: on V2.57 the wizard appeared in both boot modes, and with a valid `LANGUAGE` the main menu did; V2.40 with a valid `LANGUAGE` showed the main menu in both boot modes when rechecked on 2026-10-07 ([emulation](emulation.md)). Stock's own "Reset all" writes the same two values ([report](../../research/docs/reports/reset-all.md)) |
 | `always-on` | `emulator` plus `LIGTH_ON_TIME=7` (display never times out) |
 
 `SETTINGS="MEMORY_PLAY=1,POWER_SAVE=0"` adds single integer columns. Unknown
@@ -126,7 +126,12 @@ A profile is a small JSON file; add one beside the others for a new preset.
 ```
 
 Applying a profile later changes only the columns it names; it does not restore
-the others to stock. For a true factory state use a new work volume with
+the others to stock. `LOCAL_IMG_ANIM` (Cover Animation) and `LANGUAGE` are the player's
+own choices: a profile presets them only on a database that setup has just primed
+(`settings apply --fresh`), so later setups and applies keep what the player saved. A
+`LANGUAGE` outside the menu's 0..9 (stock's initial 100) counts as no choice and is
+still preset.
+Name them in `SETTINGS` or `--set` to change them. For a true factory state use a new work volume with
 `SETTINGS_PROFILE=factory`. Column meanings are in [settings](settings.md).
 
 ## Guest clock: not adjustable

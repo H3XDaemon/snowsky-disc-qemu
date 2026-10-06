@@ -206,7 +206,9 @@ def check_reset_all():
 
 def check_isolated(device):
     script('25_power.sh', 'off')
-    shell('userdata_mount; ROOTFS="$ROOTFS" python3 -B -m emulator.runtime.settings apply')
+    # Reset all wrote stock's LANGUAGE=100 and LOCAL_IMG_ANIM=1 (asserted in check_reset_all), as
+    # on a freshly primed database: preset them again.
+    shell('userdata_mount; ROOTFS="$ROOTFS" python3 -B -m emulator.runtime.settings apply --fresh')
     script('25_power.sh', 'on', BOOT_MODE='init', NETWORK='isolated')
     assert network.namespace(ROOT) == network.namespace_name(ROOT) == 'disc-guest'
     listeners = lambda scope: subprocess.run(  # noqa: E731

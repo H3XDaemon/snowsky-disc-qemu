@@ -9,8 +9,9 @@ and drive its UI, as groundwork for custom firmware / a sync bridge.
 Full boot to the **main menu** works, **touch injection** works, and the **SD card / File
 Browser** works (drop media in `./emulator/sdcard`, browse it to the leaf tracks). The three fixes that
 got the UI up (all encoded in `emulator/scripts/10_setup_env.sh`): raise **`RLIMIT_MSGQUEUE`**
-(`ulimit -q`), stub the **battery** sysfs at 100 %, and set **`LOCAL_IMG_ANIM=0`** to kill
-the boot-animation overlay. Touch coordinates are **180°-rotated** and press/release must be
+(`ulimit -q`), stub the **battery** sysfs at 100 %, and set **`LOCAL_IMG_ANIM=0`** to skip
+the boot-animation overlay (seen on V2.40; it no longer reproduces, and setup now presets the
+flag only on a new database: on V2.57 it is the player's Cover Animation). Touch coordinates are **180°-rotated** and press/release must be
 **separated in time** (and a ~1 s hold is a long-press — use ~0.3 s to open a list item). The
 SD needs a re-mount after the guest's boot-time umount (`sd_mount()` in `lib.sh`). See
 `emulator/docs/status.md` for screenshots and what's next.
@@ -56,8 +57,9 @@ count printed by `fb2png.py` is only a fallback heuristic, not evidence of recen
 - The first-boot **language wizard** is gated on the `LANGUAGE` column: it shows only while
   LANGUAGE is out of range (the fresh default is 100). `LANGUAGE` is a **0-based index** (switch
   in mq_ui `FUN_004776e4`): `0 zh · 1 tw · 2 en · 3 ja · 4 ko · 5 es · 6 it · 7 de · 8 pt · 9 ru`.
-  `10_setup_env.sh` presets it (`LANG_CODE`, default **2 = English**), which both picks the
-  language AND skips the wizard, so a fresh `/work` volume boots straight to the English main menu.
+  `10_setup_env.sh` presets it (`LANG_CODE`, default **2 = English**) on a database it has just
+  primed, which both picks the language AND skips the wizard, so a fresh `/work` volume boots
+  straight to the English main menu; later setups keep the language the player chose.
 - **SD card / File Browser**: `mq_ui` (`mount_storage_dev.c`) **umounts `/tmp/sdcard` once at
   startup** and expects a hotplug handler to remount the card — which nothing does under
   emulation, so the browser shows nothing. The File Browser **re-scans `/tmp/sdcard` live on
@@ -71,8 +73,8 @@ count printed by `fb2png.py` is only a fallback heuristic, not evidence of recen
   rootfs, both handled by `10_setup_env.sh`: (a) it must be **seeded** with the zlog configs
   (`usr/project/config/zlog_{player,ui}.conf` → `usr/data/fiio/log/`) + `usr/project/db/*`, or
   `mq_player` dies at `zlog_init` and never creates `sysconfig.db`; (b) `sysconfig.db` is then
-  created on first boot with `LOCAL_IMG_ANIM=1`, so a **priming boot** is needed before the flag
-  can be set to 0. State persists in the `/work` Docker volume.
+  created on first boot with `LOCAL_IMG_ANIM=1` and `LANGUAGE=100`, so a **priming boot** is
+  needed before the settings profile can be applied. State persists in the `/work` Docker volume.
 - If `docker run`/`start`/`exec` hangs and a new container is stuck in `Created` (existing ones
   still work), the Docker Desktop VM is wedged — **restart Docker Desktop**, then retry. Give it
   ≥8 GB. This is the same OOM-adjacent failure seen mid-project.
