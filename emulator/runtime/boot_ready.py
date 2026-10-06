@@ -10,12 +10,64 @@ from emulator.runtime.keys import Device
 PROGRAMS = {'mq_ui': 'event1', 'mq_player': 'event0'}   # name on the player -> input device it holds
 
 
+def argv0(pid, proc=Path('/proc')):
+    """The argv[0] a guest program received, read from the container's view of its cmdline.
+
+    The kernel builds a binfmt-started program's cmdline for the interpreter: qemu's
+    path, the program's path, then the caller's argv[0] (binfmt flag P) and the
+    arguments; an explicit `qemu -0 NAME PROGRAM` carries NAME after -0. None for a
+    process that is not a guest (the native init, a helper) or a layout not known here.
+    """
+    try:
+        fields = (proc / str(pid) / 'cmdline').read_bytes().split(b'\0')[:-1]
+    except OSError:
+        return None
+    if len(fields) < 2 or not fields[0].rsplit(b'/', 1)[-1].startswith(b'qemu-mipsel'):
+        return None
+    if fields[1] == b'-0':
+        return fields[2].decode('utf-8', 'replace') if len(fields) > 3 else None
+    if fields[1].startswith(b'-'):
+        return None
+    try:
+        auxv = (proc / str(pid) / 'auxv').read_bytes()
+    except OSError:
+        return None
+    for offset in range(0, len(auxv) - 15, 16):          # 64-bit host: (type, value) pairs
+        kind, value = int.from_bytes(auxv[offset:offset + 8], 'little'), int.from_bytes(auxv[offset + 8:offset + 16], 'little')
+        if kind == 8:                                     # AT_FLAGS: bit 0 = AT_FLAGS_PRESERVE_ARGV0
+            return fields[2 if value & 1 else 1].decode('utf-8', 'replace') if len(fields) > (2 if value & 1 else 1) else None
+    return fields[1].decode('utf-8', 'replace')
+
+
+def watched(name, pid, proc=Path('/proc')):
+    """Would the player's `pgrep -x NAME` (BusyBox 1.31.1) find this guest process?
+
+    BusyBox tries the pattern on argv[0] and falls back to the process name only when
+    the pattern occurs nowhere in argv[0]; with -x the match must cover the whole
+    string. So `exec /usr/bin/mq_ui` (argv[0] a path that contains the name) is
+    invisible to stock's watch loop on the player, while `exec -a mq_ui ...` is found.
+    The guest's own view of cmdline shows the same under PROC_EXE (emulation.md);
+    this reads the container's view, so it holds either way.
+
+    NAME is taken literally here; BusyBox compiles it as an extended regex, so for a
+    name with `.` or other metacharacters (`fiio_init.sh`) the player matches more.
+    """
+    first = argv0(pid, proc)
+    if first is None or name not in first:
+        try:
+            return (proc / str(pid) / 'comm').read_text().strip() == name
+        except OSError:
+            return False
+    return first == name
+
+
 def holders(device, proc=Path('/proc')):
     """PIDs of the stock-named programs that hold their input device: {'mq_ui': [...], 'mq_player': [...]}.
 
-    The name is /proc/<pid>/comm, what stock's own `pgrep -x` matches: a UI started
-    from another path (a boot layer's package) counts like stock's. A launcher or
-    helper that carries the name without the device does not.
+    The name is /proc/<pid>/comm, what `pidof`/`killall` accept (the name, or the
+    basename of argv[0]): a UI started from another path (a boot layer's package)
+    counts like stock's, and a launcher or helper that carries the name without the
+    device does not. The player's `pgrep -x` is stricter: see watched().
     """
     found = {name: [] for name in PROGRAMS}
     for pid in sorted(device.processes()):          # live processes in this exact chroot only

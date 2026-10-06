@@ -86,13 +86,13 @@ test('errors retry once and leaving the page cancels reconnection', () => {
   assert.equal(f.tasks.size, 0);
   f.player.start();
   assert.equal(f.requests.length, 2);
-  assert(f.requests.every(r => r.url === '/stream'));
+  assert(f.requests.every(r => r.url === '/stream?raw=1'));   // plain bytes: WebKit's fetch() swallows multipart
   f.player.stop();
 });
 
 test('fetch reader presents a complete frame and cancels on shutdown', async () => {
   const f = fixture(); let reads = 0, cancelled = false, released = false, finish;
-  f.player.fetch = async () => ({ok: true, headers: new Map([['Content-Type', 'multipart/x-mixed-replace; boundary=FRAME']]),
+  f.player.fetch = async () => ({ok: true, headers: new Map([['Content-Type', 'application/octet-stream; boundary=FRAME']]),
     body: {getReader: () => ({
       read: async () => ++reads === 1 ? {value: part(Buffer.from('png')), done: false} : new Promise(r => {finish = r;}),
       cancel: async () => {cancelled = true;}, releaseLock: () => {released = true;}

@@ -3,6 +3,10 @@
 Profiles are JSON files in emulator/settings/. A value may be "${NAME:-default}"
 to take an integer from the environment. `--set COLUMN=INT` adds single values.
 Only existing integer columns of the one SYSCONFIG row are written.
+
+`primed` says whether the priming boot got as far as the SYSCONFIG table and its
+row: mq_player creates the file first, so the file alone proves nothing. `priming`
+also tells an unprimed database (safe to start over) from one setup cannot read.
 """
 import json
 import os
@@ -57,6 +61,40 @@ def overrides(text):
     return values
 
 
+def priming(root):
+    """What the priming boot left in sysconfig.db: 'primed', 'unprimed', or an error.
+
+    mq_player creates the empty file before the SYSCONFIG table: a priming cut short in
+    between leaves a file without the table. 'unprimed' is only that: no file, an
+    empty file, or no SYSCONFIG in sqlite_master — what setup may start over. A
+    database it cannot read (locked, a WAL without its -shm, damaged) or one with
+    other than one row is neither: ValueError says why, and setup stops rather than
+    delete a guest's settings it could not look at.
+    """
+    database = Path(root) / DATABASE
+    if not database.is_file() or database.stat().st_size == 0:
+        return 'unprimed'
+    try:
+        with sqlite3.connect(f'file:{database}?mode=ro', uri=True, timeout=1) as db:
+            if not db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='SYSCONFIG'").fetchone():
+                return 'unprimed'
+            rows = db.execute('SELECT COUNT(*) FROM SYSCONFIG').fetchone()[0]
+    except sqlite3.Error as exc:
+        raise ValueError(f'sysconfig.db could not be read: {exc}') from None
+    if rows != 1:
+        raise ValueError(f'sysconfig.db has {rows} SYSCONFIG rows, expected one')
+    return 'primed'
+
+
+def primed(root):
+    """True once the SYSCONFIG table and its one row are there and readable; anything
+    else, a refused read while the player still writes included, is "not yet"."""
+    try:
+        return priming(root) == 'primed'
+    except ValueError:
+        return False
+
+
 def apply(root, values):
     """Write the values; returns the columns that changed as {column: (before, after)}."""
     checked = {}
@@ -72,6 +110,9 @@ def apply(root, values):
         raise ValueError('sysconfig.db missing; run setup (it primes the database) first')
     with sqlite3.connect(f'file:{database}?mode=rw', uri=True) as db:
         known = {row[1] for row in db.execute('PRAGMA table_info(SYSCONFIG)')}
+        if not known:
+            raise ValueError('sysconfig.db has no SYSCONFIG table: the priming boot was cut short '
+                             '(setup primes again when the table is missing)')
         unknown = sorted(set(checked) - known)
         if unknown:
             raise ValueError('Unknown SYSCONFIG column: ' + ', '.join(unknown))
@@ -89,13 +130,19 @@ def apply(root, values):
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['apply', 'list', 'show'])
+    parser.add_argument('action', choices=['apply', 'list', 'show', 'primed', 'priming'],
+                        help='primed: exit 0 once the SYSCONFIG table and its row exist; '
+                             'priming: exit 0 primed, 1 unprimed (safe to start over), 2 unreadable or unexpected')
     parser.add_argument('--profile', default=os.environ.get('SETTINGS_PROFILE') or 'emulator')
     parser.add_argument('--set', default=os.environ.get('SETTINGS', ''), help='COLUMN=INT[,COLUMN=INT...]')
     args = parser.parse_args()
     target = os.environ.get('ROOTFS', '/work/rootfs')
     try:
-        if args.action == 'list':
+        if args.action == 'primed':
+            parser.exit(0 if primed(target) else 1)
+        elif args.action == 'priming':
+            parser.exit(0 if priming(target) == 'primed' else 1)
+        elif args.action == 'list':
             for name in profiles():
                 print(f"{name}: {json.loads((PROFILES / (name + '.json')).read_text())['description']}")
         elif args.action == 'show':

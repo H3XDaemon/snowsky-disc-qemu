@@ -1,4 +1,6 @@
-/* Full lossless PNG frames, explicit decoding and a bounded latest-frame slot. */
+/* Full lossless PNG frames, explicit decoding and a bounded latest-frame slot.
+   The parts are read as plain bytes (/stream?raw=1): a multipart/x-mixed-replace body
+   never reaches the page through fetch() in WebKit, so Safari stayed black. */
 class FrameParser {
   constructor(onFrame) { this.onFrame = onFrame; this.buffer = new Uint8Array(); this.size = null; }
   push(chunk) {
@@ -77,7 +79,7 @@ class FrameStream {
   async read(run) {
     let reader;
     try {
-      const response = await this.fetch('/stream', {signal: run.controller.signal, cache: 'no-store'});
+      const response = await this.fetch('/stream?raw=1', {signal: run.controller.signal, cache: 'no-store'});
       if (!response.ok || !response.headers.get('Content-Type')?.includes('boundary=FRAME')) {
         throw new Error('Frame stream unavailable');
       }

@@ -154,6 +154,10 @@ Active firmware: **V2.57**. Local protocol research is finalized in
 
 ### Fixed
 
+- Another website open in a browser on the same computer can no longer drive the viewer:
+  `GET /tap`, `/swipe` and `/key?k=power` had no origin check, and the page could be
+  framed. Cross-site and DNS-rebound requests now get 403, and responses forbid framing.
+  [Viewer guide](viewer/docs/usage.md).
 - Settings > Cover Animation no longer returns to Static after `./emulator/run.sh boot`:
   setup forced `LOCAL_IMG_ANIM=0`, which on V2.57 is that setting. It now does so on V2.40
   only (a firmware profile without the `cover_animation_setting` capability). A work volume
@@ -178,6 +182,20 @@ Active firmware: **V2.57**. Local protocol research is finalized in
   setup leaves other architectures' handlers untouched.
 - `getsockopt(SO_ERROR)` returns MIPS errnos under the rebuilt qemu (Debian's 7.2
   returned the host's). [Limits](emulator/docs/limits.md#socket-error-numbers).
+- Setup's priming boot waits for the `SYSCONFIG` table and its row, not for the
+  database file, starts an unprimed file over, retries once and stops setup when
+  that fails or the database cannot be read: under load the settings step failed
+  on a database without its table (#58).
+  [Environment](emulator/docs/environment.md#stock-settings-profiles).
+- In a stock-init guest, `/proc/<pid>/cmdline` and `exe` of other guest processes
+  read as on the player (the rebuilt qemu, `PROC_EXE=1`), so BusyBox `pgrep -x`
+  misses a program started by its path here too instead of hiding a defect that
+  restarts stock's pair without end on the player (#57). The docs now state
+  BusyBox's matching rules; `boot_ready.watched()` applies them from the container.
+  [Process identity](emulator/docs/stock-init.md#process-identity-under-qemu-user).
+- The viewer's screen stayed black in Safari: its page now reads the frame stream
+  as plain bytes (`/stream?raw=1`), which WebKit's `fetch()` delivers, instead of
+  the multipart type it swallows. Reported in #56. [Viewer](viewer/docs/usage.md).
 
 Detailed progress, limitations and follow-ups: [protocol research](research/docs/status.md).
 

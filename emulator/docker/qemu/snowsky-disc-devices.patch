@@ -1,9 +1,9 @@
-Snowsky Disc emulation: device ioctls for static guest programs, SO_ERROR errno
-================================================================================
+Snowsky Disc emulation: device ioctls for static programs, SO_ERROR, process view
+=================================================================================
 
 Against Debian's qemu 7.2+dfsg-7+deb12u18 (the pinned qemu-user-static), after
 its own patch series; built by emulator/docker/Dockerfile into
-/usr/local/bin/qemu-mipsel-static. Two changes to linux-user/syscall.c:
+/usr/local/bin/qemu-mipsel-static. Three changes to linux-user/syscall.c:
 
 * do_ioctl: while the guest's /emu/qemu-devices marker holds "1", ioctls on the
   REGULAR FILES /dev/fb0 and /dev/input/event* are answered with the emulated
@@ -18,10 +18,17 @@ its own patch series; built by emulator/docker/Dockerfile into
 * do_getsockopt: SO_ERROR is translated to the guest's errno numbering like the
   syscall errnos are (MIPS ECONNREFUSED is 146, not the host's 111).
 
+* do_openat, readlink, readlinkat: while the guest's /emu/proc-exe marker holds "1"
+  (PROC_EXE, the stock-init default), /proc/<pid>/cmdline and /proc/<pid>/exe of
+  ANOTHER guest process read as on the player: the argv the caller passed (binfmt
+  flag P, or an explicit `-0 argv0`) and the program's path, not the interpreter's.
+  BusyBox pgrep -x matches argv[0] first, so stock's watch loop then misses a
+  program started by its path here too, as it does on the player.
+
 See emulator/docs/stock-init.md (static programs) and emulator/docs/limits.md.
 
---- a/linux-user/syscall.c	2026-10-03 10:24:05.558703084 +0000
-+++ b/linux-user/syscall.c	2026-10-03 10:39:45.348294432 +0000
+--- a/linux-user/syscall.c
++++ b/linux-user/syscall.c
 @@ -2762,6 +2762,9 @@
          if (optname == SO_TYPE) {
              val = host_to_target_sock_type(val);
@@ -32,7 +39,7 @@ See emulator/docs/stock-init.md (static programs) and emulator/docs/limits.md.
          if (len > lv)
              len = lv;
          if (len == 4) {
-@@ -5707,6 +5710,304 @@
+@@ -5707,6 +5710,489 @@
  
  /* ??? Implement proper locking for ioctls.  */
  /* do_ioctl() Must return target values and target errnos. */
@@ -60,10 +67,10 @@ See emulator/docs/stock-init.md (static programs) and emulator/docs/limits.md.
 +enum { DISC_NODE_NONE, DISC_NODE_FB, DISC_NODE_INPUT };
 +enum { DISC_INPUT_KEYS, DISC_INPUT_TOUCH };
 +
-+static int disc_devices_enabled(void)
++static int disc_marker_is_one(const char *marker)
 +{
 +    char flag = 0;
-+    int fd = open(path(DISC_MARKER), O_RDONLY);
++    int fd = open(path(marker), O_RDONLY);
 +
 +    if (fd < 0) {
 +        return 0;
@@ -117,12 +124,12 @@ See emulator/docs/stock-init.md (static programs) and emulator/docs/limits.md.
 +    }
 +    strcpy(node, base);
 +    if (strcmp(target, path("/dev/fb0")) == 0) {
-+        return disc_devices_enabled() ? DISC_NODE_FB : DISC_NODE_NONE;
++        return disc_marker_is_one(DISC_MARKER) ? DISC_NODE_FB : DISC_NODE_NONE;
 +    }
 +    if (strncmp(base, "event", 5) == 0 && base[5] >= '0' && base[5] <= '9') {
 +        snprintf(wanted, sizeof wanted, "/dev/input/%s", base);
 +        if (strcmp(target, path(wanted)) == 0) {
-+            return disc_devices_enabled() ? DISC_NODE_INPUT : DISC_NODE_NONE;
++            return disc_marker_is_one(DISC_MARKER) ? DISC_NODE_INPUT : DISC_NODE_NONE;
 +        }
 +    }
 +    return DISC_NODE_NONE;
@@ -334,10 +341,195 @@ See emulator/docs/stock-init.md (static programs) and emulator/docs/limits.md.
 +}
 +/* ---- end Snowsky Disc emulation ------------------------------------------------------ */
 +
++/* ---- Snowsky Disc emulation: the guest's view of other guest processes ---------------
++ * The kernel builds /proc/<pid>/cmdline and /proc/<pid>/exe of a binfmt-started program
++ * for the interpreter: cmdline is qemu's path, the program's path, then the argv[0] the
++ * caller passed (binfmt flag P) and the arguments; exe is qemu. The player shows the
++ * program: argv as passed, exe = the program's path. BusyBox pgrep -x matches argv[0]
++ * first and falls back to the name only when the pattern does not occur in argv[0]
++ * (procps/pgrep.c), so stock's watch loop on the player misses a program started by its
++ * path while the guest found it by comm. While /emu/proc-exe holds "1" (PROC_EXE, the
++ * stock-init default) these two entries of ANOTHER guest process read as on the player;
++ * qemu's own /proc/self is already the guest's view (open_self_cmdline, exec_path).
++ */
++#define DISC_PROC_MARKER "/emu/proc-exe"
++#define DISC_INTERPRETER "qemu-mipsel"      /* basename prefix: Debian's -static, ours, a build */
++
++/* The pid of /proc/<pid>/<entry> for another process, else 0. */
++static pid_t disc_proc_pid(const char *filename, const char *entry)
++{
++    const char *p = filename;
++    char *end;
++    long pid;
++
++    if (strncmp(p, "/proc/", 6) != 0) {
++        return 0;
++    }
++    p += 6;
++    if (*p < '1' || *p > '9') {
++        return 0;
++    }
++    pid = strtol(p, &end, 10);
++    if (*end != '/' || pid <= 0 || pid > INT_MAX || pid == getpid()) {
++        return 0;
++    }
++    return strcmp(end + 1, entry) == 0 ? (pid_t)pid : 0;
++}
++
++static int disc_argv0_preserved(pid_t pid)
++{
++    char name[48];
++    unsigned long pair[2];
++    int fd, preserved = 0;
++
++    snprintf(name, sizeof name, "/proc/%d/auxv", (int)pid);
++    fd = open(name, O_RDONLY);
++    if (fd < 0) {
++        return 0;
++    }
++    while (read(fd, pair, sizeof pair) == (ssize_t)sizeof pair && pair[0] != AT_NULL) {
++        if (pair[0] == AT_FLAGS) {
++            preserved = (pair[1] & 1) != 0;             /* AT_FLAGS_PRESERVE_ARGV0 */
++            break;
++        }
++    }
++    close(fd);
++    return preserved;
++}
++
++/* The guest argv of a qemu-run process as the player would see it, NUL-separated into
++   `out` (the length is returned), and the program's path into `program`. 0 when the
++   process is not a guest or qemu was started in a form not described here (the caller
++   then shows the kernel's text): binfmt with P, explicit `qemu -0 argv0 PROGRAM ...`,
++   or explicit `qemu PROGRAM ...`. */
++static int disc_guest_argv(pid_t pid, char *out, size_t size, char *program, size_t psize)
++{
++    /* Bounds: the kernel's text is read into 4096 bytes and split into 64 fields at most.
++       Enough for argv[0] and pgrep -x; `pgrep -f` or `ps` on a longer command line see it
++       cut short here where the player shows all of it. */
++    char name[48], raw[4096], *fields[64];
++    const char *base;
++    int fd, n, count = 0, first, prog, i, total = 0;
++
++    snprintf(name, sizeof name, "/proc/%d/cmdline", (int)pid);
++    fd = open(name, O_RDONLY);
++    if (fd < 0) {
++        return 0;
++    }
++    n = read(fd, raw, sizeof raw - 1);
++    close(fd);
++    if (n <= 0) {
++        return 0;
++    }
++    raw[n] = 0;
++    for (i = 0; i < n && count < (int)ARRAY_SIZE(fields); i++) {
++        if (i == 0 || raw[i - 1] == 0) {
++            fields[count++] = raw + i;
++        }
++    }
++    base = strrchr(fields[0], '/');
++    base = base ? base + 1 : fields[0];
++    if (strncmp(base, DISC_INTERPRETER, strlen(DISC_INTERPRETER)) != 0) {
++        return 0;
++    }
++    if (disc_argv0_preserved(pid)) {
++        if (count < 3) {
++            return 0;
++        }
++        prog = 1;
++        first = 2;
++    } else if (count >= 4 && strcmp(fields[1], "-0") == 0) {
++        prog = 3;
++        first = 2;
++    } else if (count >= 2 && fields[1][0] != '-') {
++        prog = 1;
++        first = 1;
++    } else {
++        return 0;
++    }
++    if (strlen(fields[prog]) >= psize) {
++        return 0;
++    }
++    strcpy(program, fields[prog]);
++    for (i = first; i < count; i++) {
++        size_t len = strlen(fields[i]) + 1;
++
++        if (i == prog && prog == 3) {
++            continue;                               /* explicit -0: the program follows argv0 */
++        }
++        if (total + len > size) {
++            return 0;
++        }
++        memcpy(out + total, fields[i], len);
++        total += len;
++    }
++    return total;
++}
++
++static int disc_guest_program(pid_t pid, char *program, size_t psize)
++{
++    char argv[4096];
++
++    return disc_guest_argv(pid, argv, sizeof argv, program, psize) > 0;
++}
++
++/* A file holding the guest's argv, or -2 when the kernel's own text should be shown. */
++static int disc_open_cmdline(pid_t pid)
++{
++    char argv[4096], program[PATH_MAX], filename[PATH_MAX];
++    const char *tmpdir;
++    int total = disc_guest_argv(pid, argv, sizeof argv, program, sizeof program), fd;
++
++    if (total <= 0) {
++        return -2;
++    }
++    fd = memfd_create("qemu-open", 0);
++    if (fd < 0) {
++        if (errno != ENOSYS) {
++            return fd;
++        }
++        tmpdir = getenv("TMPDIR");
++        if (!tmpdir) {
++            tmpdir = "/tmp";
++        }
++        snprintf(filename, sizeof(filename), "%s/qemu-open.XXXXXX", tmpdir);
++        fd = mkstemp(filename);
++        if (fd < 0) {
++            return fd;
++        }
++        unlink(filename);
++    }
++    if (write(fd, argv, total) != total) {
++        int e = errno;
++        close(fd);
++        errno = e;
++        return -1;
++    }
++    lseek(fd, 0, SEEK_SET);
++    return fd;
++}
++
++/* readlink of /proc/<pid>/exe for another guest process; -2 when not ours. The path
++   test comes first: the marker is read only for such a path, never for other readlinks. */
++static abi_long disc_readlink_exe(const char *filename, char *buf, abi_long size)
++{
++    char program[PATH_MAX];
++    pid_t pid = disc_proc_pid(filename, "exe");
++    abi_long len;
++
++    if (!pid || !disc_marker_is_one(DISC_PROC_MARKER) || !disc_guest_program(pid, program, sizeof program)) {
++        return -2;
++    }
++    len = MIN((abi_long)strlen(program), size);
++    memcpy(buf, program, len);                       /* readlink does not NUL-terminate */
++    return len;
++}
++/* ---- end Snowsky Disc process view ---------------------------------------------------- */
++
  static abi_long do_ioctl(int fd, int cmd, abi_long arg)
  {
      const IOCTLEntry *ie;
-@@ -5716,6 +6012,9 @@
+@@ -5716,6 +6202,9 @@
      int target_size;
      void *argptr;
  
@@ -347,3 +539,46 @@ See emulator/docs/stock-init.md (static programs) and emulator/docs/limits.md.
      ie = ioctl_entries;
      for(;;) {
          if (ie->target_cmd == 0) {
+@@ -8334,6 +8823,24 @@
+         return fd;
+     }
+ 
++    /* Another guest process, as the player shows it. The path test is a string compare;
++       the marker is read only for /proc/<pid>/cmdline|exe, so every other open pays nothing. */
++    if (strncmp(pathname, "/proc/", 6) == 0) {
++        char program[PATH_MAX];
++        pid_t pid = disc_proc_pid(pathname, "cmdline");
++
++        if (pid && disc_marker_is_one(DISC_PROC_MARKER)) {
++            int fd = disc_open_cmdline(pid);
++
++            if (fd != -2) {
++                return fd;
++            }
++        } else if (!pid && (pid = disc_proc_pid(pathname, "exe")) && disc_marker_is_one(DISC_PROC_MARKER)
++                   && disc_guest_program(pid, program, sizeof program)) {
++            return safe_openat(dirfd, path(program), flags, mode);
++        }
++    }
++
+     return safe_openat(dirfd, path(pathname), flags, mode);
+ }
+ 
+@@ -9988,6 +10492,8 @@
+                     /* We cannot NUL terminate the string. */
+                     memcpy(p2, real, ret);
+                 }
++            } else if ((ret = disc_readlink_exe((const char *)p, p2, arg3)) != -2) {
++                /* another guest process's program, as the player's kernel would report */
+             } else {
+                 ret = get_errno(readlink(path(p), p2, arg3));
+             }
+@@ -10020,6 +10526,8 @@
+                     /* We cannot NUL terminate the string. */
+                     memcpy(p2, real, ret);
+                 }
++            } else if ((ret = disc_readlink_exe((const char *)p, p2, arg4)) != -2) {
++                /* another guest process's program, as the player's kernel would report */
+             } else {
+                 ret = get_errno(readlinkat(arg1, path(p), p2, arg4));
+             }

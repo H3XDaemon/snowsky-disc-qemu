@@ -26,7 +26,9 @@ macOS/Linux host
   (`emulator/docker/qemu/snowsky-disc-devices.patch`; `/usr/local/bin/qemu-mipsel-static`
   links to the build-named `/usr/local/lib/qemu-mipsel-<build>/qemu-mipsel-static` that
   binfmt registers): it answers the framebuffer/input ioctls for **static** programs,
-  which load no shim, and translates `getsockopt(SO_ERROR)`. Debian's binary stays at
+  which load no shim, translates `getsockopt(SO_ERROR)`, and with `PROC_EXE=1` shows
+  other guest processes' `cmdline`/`exe` as the player does
+  ([process identity](stock-init.md#process-identity-under-qemu-user)). Debian's binary stays at
   `/usr/bin` for `QEMU=/usr/bin/qemu-mipsel-static`. See
   [stock-init.md](stock-init.md#static-programs-and-the-devices).
 - `--privileged` is required: qemu-user needs to reserve a large contiguous guest VA,
@@ -276,9 +278,10 @@ Those other sensors are not needed for boot and are not emulated.
   only ever draws to buf0/buf1 (alternating), so buf2 stays black. Prefer the
   `emu/fb-live` marker (0/1) or the viewer's `/frame` endpoint for the current frame.
   Non-black counts alone cannot distinguish an old frame from the latest one.
-- **`sysconfig.db missing` on the very first `10_setup_env` of a fresh rootfs** — expected
-  (see the `/usr/data` catch above); the script seeds `/usr/data` then primes the DB. If it
-  still reports missing after priming, check `/work/mq_player.log`.
+- **`sysconfig.db absent` on the very first `10_setup_env` of a fresh rootfs** — expected
+  (see the `/usr/data` catch above); the script seeds `/usr/data` then primes the DB, waiting
+  for the `SYSCONFIG` table rather than the file (two attempts). If it still reports no
+  table after priming, check `/work/mq_player.log`.
 - **`/work/mq_player.log` = `Error: zlog_init`** — the backend can't init logging because the
   zlog config isn't in `usr/data/fiio/log/`. `10_setup_env.sh` seeds it from
   `usr/project/config/zlog_{player,ui}.conf`; if the seed step didn't run (older checkout),

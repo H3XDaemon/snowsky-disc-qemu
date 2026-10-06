@@ -7,7 +7,10 @@ page into synthetic touches appended to `$ROOTFS/dev/input/event1` — i.e. you 
 the real stock UI from a browser on the host, no hardware.
 
   GET /            HTML page (stream + pointer capture)
-  GET /stream      multipart/x-mixed-replace PNG stream (the live screen)
+  GET /stream      multipart/x-mixed-replace PNG stream (the live screen; a browser's <img>)
+  GET /stream?raw=1  the same frames and framing as application/octet-stream: what the
+                   page's frames.js reads (WebKit special-cases multipart/x-mixed-replace
+                   in fetch(), which left Safari's viewer black)
   GET /frame       single current PNG
   GET /tap?x&y     short tap at display coords (press, hold ~0.3s, release)
   GET /down?x&y    press (start of a drag/swipe)
@@ -25,7 +28,7 @@ for older shims).
 The panel is 180deg-rotated, so display = reverse of the raw pixels, and a tapped
 display coord maps to raw touch (359-x, 359-y) — same flip as emulator/scripts/30_tap.sh.
 """
-import os, sys, time, struct, threading, json
+import os, sys, time, struct, threading, json, ipaddress
 from pathlib import Path
 from emulator.runtime.framebuffer import Framebuffer, FrameState
 from emulator.runtime.touch import Touch
@@ -33,7 +36,7 @@ from emulator.runtime.audio import capture_info, output_state, read_chunk
 from emulator.runtime.keys import Buttons, Device, CODES
 from emulator.runtime.peripherals import Peripherals
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, urlsplit, parse_qs
 
 ROOTFS = os.environ.get("ROOTFS", "/work/rootfs")
 PORT = int(os.environ.get("STREAM_PORT", "8080"))
@@ -115,7 +118,42 @@ class Handler(BaseHTTPRequestHandler):
     def _q(self, qs, k):
         return int(float(qs.get(k, ['0'])[0]))
 
+    def end_headers(self):
+        # Another site must not show the page in a frame and collect clicks on it.
+        self.send_header('X-Frame-Options', 'DENY')
+        self.send_header('Content-Security-Policy', "frame-ancestors 'none'")
+        super().end_headers()
+
+    def _browser_request_allowed(self, path):
+        """Refuse what a browser sends on behalf of another site. GET /tap, /swipe and
+        /key act on the guest, so a page elsewhere could otherwise drive it with an
+        <img> tag, and a DNS-rebound name could read /frame. Refused: a Sec-Fetch-Site
+        other than same-origin or none, except a top-level navigation to the page "/"
+        (Chrome marks a URL opened from another app as cross-site); a foreign Origin;
+        a Host that is a name other than localhost. A browser without Fetch Metadata
+        does not send Origin on a cross-site GET, so that GET still gets through."""
+        site = self.headers.get('Sec-Fetch-Site', '')
+        if site and site not in ('same-origin', 'none') and not (
+                self.headers.get('Sec-Fetch-Mode') == 'navigate'
+                and self.headers.get('Sec-Fetch-Dest') == 'document' and path == '/'):
+            return False
+        host = self.headers.get('Host', '')
+        if host:
+            try:
+                name = urlsplit('//' + host).hostname or ''
+            except ValueError:
+                return False
+            if name != 'localhost':
+                try:
+                    ipaddress.ip_address(name)
+                except ValueError:
+                    return False
+        origin = self.headers.get('Origin')
+        return not origin or urlparse(origin).netloc == host
+
     def do_POST(self):
+        if not self._browser_request_allowed(self.path):
+            self._audio_response(403, 'text/plain', b'Cross-site request refused'); return
         if self.path not in ('/button', '/peripheral'):
             self._audio_response(404, 'text/plain', b'Not found'); return
         # JSON-only and same-origin: another website must not power-cycle this guest.
@@ -157,6 +195,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urlparse(self.path)
         p, qs = u.path, parse_qs(u.query)
+        if not self._browser_request_allowed(p):
+            self._audio_response(403, 'text/plain', b'Cross-site request refused'); return
         if p in ('/audio.js', '/keys.js', '/frames.js', '/controls.js', '/device.css'):
             data = open(os.path.join(os.path.dirname(__file__), 'static', p[1:]), 'rb').read()
             self._audio_response(200, 'text/css' if p.endswith('.css') else 'text/javascript', data)
@@ -198,7 +238,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(png)
         elif p == '/stream':
-            self._frame_stream()
+            self._frame_stream(raw=qs.get('raw', [''])[0] == '1')
         elif p == '/key':
             k = qs.get('k', [''])[0]
             code = KEYS.get(k)
@@ -240,12 +280,17 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('Content-Length', '0')
             self.end_headers()
 
-    def _frame_stream(self):
+    def _frame_stream(self, raw=False):
         self.close_connection = True
         self.connection.settimeout(5)  # Bound blocked writes to slow/disconnected clients.
         try:
             self.send_response(200)
-            self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=FRAME')
+            # One framing, two labels: the multipart type lets a browser render the stream
+            # natively in <img>; frames.js parses the parts itself and asks for plain bytes,
+            # because WebKit's fetch() handles multipart/x-mixed-replace as an image loader
+            # would and never hands the body to the page (Safari showed a black screen).
+            self.send_header('Content-Type', ('application/octet-stream' if raw else 'multipart/x-mixed-replace')
+                             + '; boundary=FRAME')
             self.send_header('Cache-Control', 'no-store, no-transform')
             self.send_header('X-Accel-Buffering', 'no')
             self.send_header('Connection', 'close')

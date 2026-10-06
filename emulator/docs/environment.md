@@ -98,7 +98,16 @@ variable to leave an existing file alone). `nb.txt` is not created.
 ## Stock settings profiles
 
 `10_setup_env.sh` creates `sysconfig.db` by a priming boot, then applies a
-profile from `emulator/settings/`:
+profile from `emulator/settings/`. The priming waits for what the profile needs,
+the `SYSCONFIG` table with its one row (`python3 -m emulator.runtime.settings
+primed`), not for the file: `mq_player` creates the file first, and a boot cut
+short between the two left a database the settings step could not use (#58).
+Only an **unprimed** database is started over (none, an empty file, no `SYSCONFIG`
+in `sqlite_master`), and a priming that does not finish within 35 s (a loaded
+host) is tried once more before setup stops with exit 1. A database setup
+cannot read (locked, damaged) or one with other than one row stops setup with
+the reason (`settings priming`): it may be a guest's real settings, which setup
+never deletes unasked.
 
 | Profile | Changes to the stock-created row |
 | --- | --- |

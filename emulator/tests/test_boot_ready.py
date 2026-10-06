@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from emulator.runtime.boot_ready import flusher, holders, own_pid, ready, wait_ready
+from emulator.runtime.boot_ready import argv0, flusher, holders, own_pid, ready, wait_ready, watched
 
 
 class BootReadyTests(unittest.TestCase):
@@ -53,6 +53,42 @@ class BootReadyTests(unittest.TestCase):
         (self.proc / '1/status').write_text('Name:\tmq_ui\n')   # no NSpid line (older kernels)
         self.assertEqual(own_pid(1, self.proc), 1)
         self.assertTrue(ready(self.device, self.proc))
+
+    def process(self, pid, cmdline, comm, preserved=None):
+        """A guest process as the container sees it: qemu's cmdline, the program's comm."""
+        entry = self.proc / str(pid)
+        entry.mkdir(parents=True, exist_ok=True)
+        (entry / 'cmdline').write_bytes(b''.join(part.encode() + b'\0' for part in cmdline))
+        (entry / 'comm').write_text(comm + '\n')
+        if preserved is not None:                       # AT_FLAGS (8) with bit 0 = argv[0] preserved
+            (entry / 'auxv').write_bytes((8).to_bytes(8, 'little') + int(preserved).to_bytes(8, 'little') + bytes(16))
+
+    def test_argv0_follows_the_three_qemu_layouts(self):
+        qemu = '/usr/local/lib/qemu-mipsel-abc/qemu-mipsel-static'
+        self.process(10, [qemu, '/usr/bin/mq_ui', 'mq_ui'], 'mq_ui', preserved=True)        # binfmt P: exec mq_ui
+        self.process(11, [qemu, '/usr/bin/mq_ui', '/usr/bin/mq_ui'], 'mq_ui', preserved=True)   # exec /usr/bin/mq_ui
+        self.process(12, [qemu, '-0', 'mq_ui', '/usr/data/mq_ui', '-v'], 'mq_ui')                # explicit -0
+        self.process(13, [qemu, '/usr/data/mq_ui', '-v'], 'mq_ui', preserved=False)              # explicit plain
+        self.process(14, [qemu, '-g', '1234', '/usr/bin/mq_player'], 'mq_player', preserved=False)   # unknown options
+        self.process(15, ['python3', '-m', 'emulator.runtime.guest_init'], 'init')                 # not a guest
+        self.assertEqual([argv0(pid, self.proc) for pid in range(10, 16)],
+                         ['mq_ui', '/usr/bin/mq_ui', 'mq_ui', '/usr/data/mq_ui', None, None])
+
+    def test_watched_is_busybox_pgrep_x_on_the_player(self):
+        qemu = '/usr/bin/qemu-mipsel-static'
+        self.process(20, [qemu, '/usr/bin/mq_ui', 'mq_ui'], 'mq_ui', preserved=True)
+        self.process(21, [qemu, '/usr/bin/mq_ui', '/usr/bin/mq_ui'], 'mq_ui', preserved=True)
+        self.process(22, [qemu, '/usr/bin/mq_ui', '/sbin/mq_ui'], 'mq_ui', preserved=True)
+        self.process(23, [qemu, '/bin/busybox', 'sh', '/sbin/mq_ui'], 'sh', preserved=True)     # a wrapper script
+        self.process(24, [qemu, '/usr/data/ui', 'disc-ui'], 'mq_ui', preserved=True)           # name only in comm
+        self.assertTrue(watched('mq_ui', 20, self.proc))        # argv[0] is the name
+        self.assertFalse(watched('mq_ui', 21, self.proc))       # the name occurs in a path: no fallback to comm
+        self.assertFalse(watched('mq_ui', 22, self.proc))
+        self.assertFalse(watched('mq_ui', 23, self.proc))
+        self.assertTrue(watched('mq_ui', 24, self.proc))        # not in argv[0] at all: comm decides
+        self.assertFalse(watched('mq_ui', 999, self.proc))      # gone
+        # The pair stock's own fiio_init.sh starts (`mq_ui &`, `mq_player &`) is watched.
+        self.assertTrue(watched('mq_ui', 1, self.proc) and watched('mq_player', 2, self.proc))
 
     def test_flusher_reads_the_marker_or_nothing(self):
         self.assertEqual(flusher(self.device), 37)
