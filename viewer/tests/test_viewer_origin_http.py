@@ -41,6 +41,7 @@ class BrowserOriginTests(unittest.TestCase):
         self.assertEqual(self.get('/tap?x=1&y=1', **{'Sec-Fetch-Site': 'same-site'}).status, 403)
         self.assertEqual(self.get('/key?k=power', Origin='http://example.com').status, 403)
         self.assertEqual(self.get('/device.json', host=f'attacker.example:{self.port}').status, 403)
+        self.assertEqual(self.get('/device.json', host=f'mac.local.attacker.example:{self.port}').status, 403)
         navigate = {'Sec-Fetch-Site': 'cross-site', 'Sec-Fetch-Mode': 'navigate'}
         self.assertEqual(self.get('/', **navigate, **{'Sec-Fetch-Dest': 'iframe'}).status, 403)
         self.assertEqual(self.get('/device.json', **navigate, **{'Sec-Fetch-Dest': 'document'}).status, 403)
@@ -50,6 +51,10 @@ class BrowserOriginTests(unittest.TestCase):
     def test_own_page_and_tools_still_work(self):
         self.assertEqual(self.get('/device.json').status, 200)                       # curl, scripts
         self.assertEqual(self.get('/device.json', host=f'localhost:{self.port}').status, 200)
+        self.assertEqual(self.get('/device.json', host=f'Mac-Name.local:{self.port}').status, 200)   # mDNS
+        with patch.object(stream, 'VIEWER_HOSTS', {'viewer.example.org'}):                         # reverse proxy
+            self.assertEqual(self.get('/device.json', host='viewer.example.org').status, 200)
+            self.assertEqual(self.get('/device.json', host='other.example.org').status, 403)
         self.assertEqual(self.get('/device.json', **{'Sec-Fetch-Site': 'same-origin'},
                                   Origin=f'http://127.0.0.1:{self.port}').status, 200)
         self.assertEqual(self.get('/device.json', **{'Sec-Fetch-Site': 'none'}).status, 200)  # typed URL
