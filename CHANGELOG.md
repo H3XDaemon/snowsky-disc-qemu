@@ -151,6 +151,10 @@ Active firmware: **V2.57**. Local protocol research is finalized in
 
 ### Fixed
 
+- Another website open in a browser on the same computer can no longer drive the viewer:
+  `GET /tap`, `/swipe` and `/key?k=power` had no origin check, and the page could be
+  framed. Cross-site and DNS-rebound requests now get 403, and responses forbid framing.
+  [Viewer guide](viewer/docs/usage.md).
 - Setup and cleanup of a fresh work volume no longer detach the card image of
   another running emulator container (loop devices are shared by the Docker VM).
 - WebSocket bridge releases its connection slot even when an invalid peer disconnects
