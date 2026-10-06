@@ -51,6 +51,7 @@ services:
       SETTINGS_PROFILE: ${SETTINGS_PROFILE:-} # emulator (default), factory, always-on
       SETTINGS: ${SETTINGS:-}           # COLUMN=INT,... on top of the profile
       STREAM_FPS: ${STREAM_FPS:-12}
+      VIEWER_HOSTS: ${VIEWER_HOSTS:-}   # extra viewer host names, comma-separated (reverse proxy)
       DEVICE_BOOT_SCRIPT: ${DEVICE_BOOT_SCRIPT:-} # empty keeps the stock viewer Power-on path
     stop_grace_period: 2s
     networks:

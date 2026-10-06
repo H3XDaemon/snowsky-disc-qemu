@@ -28,7 +28,7 @@ for older shims).
 The panel is 180deg-rotated, so display = reverse of the raw pixels, and a tapped
 display coord maps to raw touch (359-x, 359-y) — same flip as emulator/scripts/30_tap.sh.
 """
-import os, sys, time, struct, threading, json
+import os, sys, time, struct, threading, json, ipaddress
 from pathlib import Path
 from emulator.runtime.framebuffer import Framebuffer, FrameState
 from emulator.runtime.touch import Touch
@@ -36,11 +36,13 @@ from emulator.runtime.audio import capture_info, output_state, read_chunk
 from emulator.runtime.keys import Buttons, Device, CODES
 from emulator.runtime.peripherals import Peripherals
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, urlsplit, parse_qs
 
 ROOTFS = os.environ.get("ROOTFS", "/work/rootfs")
 PORT = int(os.environ.get("STREAM_PORT", "8080"))
 FPS = float(os.environ.get("STREAM_FPS", "12"))
+# Host names a browser may use besides localhost, IP literals and *.local (a reverse proxy).
+VIEWER_HOSTS = {h.strip().lower() for h in os.environ.get("VIEWER_HOSTS", "").split(",") if h.strip()}
 EVENT_HEARTBEAT = 15
 FRAME_HEARTBEAT = 15               # infrequent full refresh / dead-client detection
 FB = os.path.join(ROOTFS, "dev/fb0")
@@ -118,7 +120,44 @@ class Handler(BaseHTTPRequestHandler):
     def _q(self, qs, k):
         return int(float(qs.get(k, ['0'])[0]))
 
+    def end_headers(self):
+        # Another site must not show the page in a frame and collect clicks on it.
+        self.send_header('X-Frame-Options', 'DENY')
+        self.send_header('Content-Security-Policy', "frame-ancestors 'none'")
+        super().end_headers()
+
+    def _browser_request_allowed(self, path):
+        """Refuse what a browser sends on behalf of another site. GET /tap, /swipe and
+        /key act on the guest, so a page elsewhere could otherwise drive it with an
+        <img> tag, and a DNS-rebound name could read /frame. Refused: a Sec-Fetch-Site
+        other than same-origin or none, except a top-level navigation to the page "/"
+        (Chrome marks a URL opened from another app as cross-site); a foreign Origin;
+        a Host name other than localhost, a *.local mDNS name (resolved only on the
+        local link, so public DNS cannot rebind it) or one listed in VIEWER_HOSTS.
+        A browser without Fetch Metadata does not send Origin on a cross-site GET, so
+        that GET still gets through."""
+        site = self.headers.get('Sec-Fetch-Site', '')
+        if site and site not in ('same-origin', 'none') and not (
+                self.headers.get('Sec-Fetch-Mode') == 'navigate'
+                and self.headers.get('Sec-Fetch-Dest') == 'document' and path == '/'):
+            return False
+        host = self.headers.get('Host', '')
+        if host:
+            try:
+                name = urlsplit('//' + host).hostname or ''
+            except ValueError:
+                return False
+            if name != 'localhost' and not name.endswith('.local') and name not in VIEWER_HOSTS:
+                try:
+                    ipaddress.ip_address(name)
+                except ValueError:
+                    return False
+        origin = self.headers.get('Origin')
+        return not origin or urlparse(origin).netloc == host
+
     def do_POST(self):
+        if not self._browser_request_allowed(self.path):
+            self._audio_response(403, 'text/plain', b'Cross-site request refused'); return
         if self.path not in ('/button', '/peripheral'):
             self._audio_response(404, 'text/plain', b'Not found'); return
         # JSON-only and same-origin: another website must not power-cycle this guest.
@@ -160,6 +199,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urlparse(self.path)
         p, qs = u.path, parse_qs(u.query)
+        if not self._browser_request_allowed(p):
+            self._audio_response(403, 'text/plain', b'Cross-site request refused'); return
         if p in ('/audio.js', '/keys.js', '/frames.js', '/controls.js', '/device.css'):
             data = open(os.path.join(os.path.dirname(__file__), 'static', p[1:]), 'rb').read()
             self._audio_response(200, 'text/css' if p.endswith('.css') else 'text/javascript', data)

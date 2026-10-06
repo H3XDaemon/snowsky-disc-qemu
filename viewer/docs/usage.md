@@ -96,6 +96,19 @@ detached by `./emulator/run.sh view`) and serves:
 | `GET /events` | SSE `device` snapshots on connection and state changes; idle heartbeat every 15 seconds |
 | `GET /key?k=volume_up\|volume_down\|play_pause\|power` (or safe `?code=<int>`) | diagnostic single stock key event; use POST for power lifecycle |
 
+Requests a browser makes for another site get 403 on every endpoint: a
+`Sec-Fetch-Site` other than `same-origin` or `none`, an `Origin` that is not the
+viewer's own, or a `Host` name other than `localhost`, a `*.local` mDNS name or one listed
+in `VIEWER_HOSTS` (DNS rebinding; IP addresses always pass). `VIEWER_HOSTS` in `emulator/.env`
+takes comma-separated names, such as that of a reverse proxy in front of the viewer. The one
+cross-site request allowed is a top-level navigation to `/`, because Chrome marks a URL
+opened from another app as cross-site. Every response sends `X-Frame-Options: DENY` and
+`Content-Security-Policy: frame-ancestors 'none'`. Without this, any page open in a
+browser on the same computer could tap, swipe and press Power through `GET /tap` or
+`GET /key?k=power`. A browser that sends no Fetch Metadata headers also sends no
+`Origin` on a cross-site GET, so for it that GET still gets through. curl and scripts
+send none of these headers and are not affected.
+
 The page subscribes to `/events` through `EventSource` instead of polling
 `/device.json` every second. Each connection immediately receives current power,
 screen, brightness, peripherals, transition and error state; unchanged state produces only SSE heartbeat
