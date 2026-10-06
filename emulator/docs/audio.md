@@ -175,13 +175,14 @@ each write after the writer's own work, so output ran slower than real time by t
 per-period work. In `emulator/tests/test_output_stream.py` (40 writes of 1024 frames at
 44.1 kHz, 928 ms of audio, 2 ms of work before each) the last write returned after
 1009-1011 ms with that version and after 837-839 ms with this one, 92 ms (the 4096-frame
-buffer) before the audio finished, in Docker under qemu-user. On a slower host (an Android
-phone running this firmware under qemu-user, outside this repository) the earlier version
-played 29.2 s of audio per 30 s (0.973×); the browser loses 0.027 s of lag per second at
-that rate, so a 0.15 s lag would be used up after about 6 s. A draft of the current pacing
-that returned one period later measured 29.96 s per 30.05 s on that phone, and with the
-0.3 s look-back above one 70 s browser run there recorded no gaps; the phone was not
-measured again with the current pacing. When the host cannot decode in real time, every
+buffer) before the audio finished, in Docker under qemu-user. On a slower host (an Oppo A78
+phone running this firmware under qemu-user, outside this repository), playing one 48 kHz
+track in four alternating runs of each shim, the earlier version produced 29.32-29.44 s of
+audio per 30.01 s (0.977-0.981×) and this one 30.00 s (0.9995×). At 0.98× the browser loses
+0.02 s of lag per second, so a 0.15 s lag would be used up after about 8 s. With a draft of
+this pacing that returned one period later and the 0.3 s look-back above, one 70 s browser
+run on that phone recorded no gaps; that listening run was not repeated with the current
+pacing. When the host cannot decode in real time, every
 write starts the clock again and `pcm_write` returns without sleeping.
 
 Future firmware analysis: [RE.md](../../research/docs/methods.md), [Ghidra tooling](../../research/ghidra/README.md).
