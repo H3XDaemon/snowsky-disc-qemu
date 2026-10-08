@@ -105,6 +105,7 @@ Active firmware: **V2.57**. Local protocol research is finalized in
 
 ### Changed
 
+- Ejecting the SD card from the viewer takes a second click within 3 s.
 - The emulator image gains `exfatprogs`: rebuild it
   (`docker build -t snowsky-disc-qemu-ci emulator/docker`) before using an exFAT
   card. Everything else works with the previous image.
@@ -151,6 +152,10 @@ Active firmware: **V2.57**. Local protocol research is finalized in
 
 ### Fixed
 
+- A failed SD eject (busy card) no longer leaves its message on the viewer's status
+  line until the next peripheral action; it clears after eight seconds.
+- The viewer's Power key symbol showed as a box on Android 14 (Oppo A78); it is
+  drawn as an inline SVG now.
 - Settings > Cover Animation and the language chosen in the player's menu no longer return to
   Static and to `LANG_CODE` after `./emulator/run.sh boot` or `settings apply`: setup presets
   `LOCAL_IMG_ANIM=0` and `LANGUAGE` only on a database it has just primed (and the language also
