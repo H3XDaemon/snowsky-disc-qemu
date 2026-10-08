@@ -30,3 +30,36 @@ test('SSE mirrors backlight and peripherals with no extra controls or polling',(
   assert.deepEqual(requests,[]);
   assert(!Object.hasOwn(nodes,'volume'));assert(!Object.hasOwn(nodes,'brightness'));
 });
+
+test('Ejecting takes a second click within 3 s; inserting does not',async()=>{
+  const nodes={}, posts=[], timers=new Map();
+  let next=1;
+  function element(id) {
+    return nodes[id] ||= {style:{}, attributes:{}, label:{}, classes:new Set(), textContent:'',
+      classList:{toggle(name,on){on?nodes[id].classes.add(name):nodes[id].classes.delete(name);}},
+      setAttribute(name,value){this.attributes[name]=value;}, querySelector(){return this.label;}};
+  }
+  const window={}, settle=()=>new Promise(resolve=>setImmediate(resolve));
+  const fetch=async(path,init)=>{posts.push(JSON.parse(init.body));return {ok:true,json:async()=>state};};
+  const expire=()=>{const [id,fn]=[...timers][0];timers.delete(id);fn();};
+  vm.runInNewContext(fs.readFileSync(require.resolve('../static/controls.js'),'utf8'),{
+    document:{getElementById:element}, window, fetch,
+    setTimeout:(fn,ms)=>{assert.equal(ms,3000);timers.set(next,fn);return next++;},
+    clearTimeout:id=>timers.delete(id)
+  });
+  let state={sd_available:true,sd_inserted:true,usb_connected:true};
+  window.viewerControls.update(state);
+  const click=async()=>{element('sd-toggle').onclick();await settle();};
+  await click();
+  assert.deepEqual(posts,[]);
+  assert.equal(element('control-error').textContent,'Click the card again to eject');
+  expire();                                             // window closed: hint gone, nothing ejected
+  assert.equal(element('control-error').textContent,'');
+  await click();await click();                          // within the window
+  assert.deepEqual(posts,[{name:'sd',inserted:false}]);
+  assert.equal(timers.size,0);
+  state={...state,sd_inserted:false};window.viewerControls.update(state);
+  await click();                                        // inserting needs no confirmation
+  assert.deepEqual(posts.at(-1),{name:'sd',inserted:true});
+  assert.equal(timers.size,0);
+});

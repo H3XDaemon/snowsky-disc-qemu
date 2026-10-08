@@ -58,7 +58,9 @@ the older cable/sysfs stub. See [idle power and USB scope](../../emulator/docs/i
 The SD control performs real guest card removal/insertion and sends a unicast stock
 hotplug event only to this fingerprinted player. Removal first unmounts both emulated
 card mounts without force, then hides their mmc nodes. A busy card is refused; stop
-playback or turn the player off before retrying. This protects media from stock
+playback or turn the player off before retrying. The refusal stays on the screen's status
+line for eight seconds. Ejecting from the viewer takes a second click within 3 s (the first
+click only shows a hint); inserting takes one click. This protects media from stock
 mountpoint cleanup after a failed unmount. Insertion reattaches the same image (the
 old loop number may have been released), restores the nodes, and waits for the stock
 mount before preparing the helper mount. Cyrillic filenames and media hashes are
